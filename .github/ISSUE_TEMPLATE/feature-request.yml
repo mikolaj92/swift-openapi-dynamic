@@ -1,0 +1,49 @@
+name: 🌟 Request a change
+description: >
+  Request a feature, improvement, or other change.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        This repository hosts issues for the OpenAPIDynamic library.
+        It does *not* track feedback on Xcode and other closed source Apple
+        developer software such as URLSession itself; please direct it to
+        [Feedback Assistant](https://developer.apple.com/bug-reporting) instead.
+
+        ___
+
+        Use this issue template to start discussion about your feature request.
+  - type: textarea
+    attributes:
+      label: Motivation
+      description: >
+        Describe the problems that this proposal aims to address, and what
+        workarounds adopters have to employ currently, if any.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed solution
+      description: >
+        Describe your solution to the problem. Provide examples and describe how they
+        work. Show how your solution is better than current workarounds.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Alternatives considered
+      description: >
+        Any alternative approaches that were considered, and why the *proposed
+        solution* was chosen instead.
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Additional information
+      description: >
+        Any complementary information that could be valuable to an author of a
+        formal proposal, an implementor, or future discussions. For example, a
+        link to a discussion or post that motivated this request.
+    validations:
+      required: false
