@@ -127,6 +127,51 @@ public struct RequestBuilder {
     }
 }
 
+/// Context passed to `OpenAPIDynamic` when response decoding fails.
+public struct DecodingFailureContext {
+    /// The HTTP method used by the request.
+    public let method: HTTPRequest.Method
+
+    /// The URL used by the request.
+    public let url: URL
+
+    /// The operation ID used by the middleware chain.
+    public let operationID: String
+
+    /// The HTTP response received before decoding.
+    public let response: HTTPResponse?
+
+    /// The response body that failed to decode.
+    public let responseBody: Data?
+
+    /// The expected Swift type.
+    public let targetType: Any.Type
+
+    /// The error thrown by JSON decoding or a custom decoder closure.
+    public let error: any Error
+
+    public init(
+        method: HTTPRequest.Method,
+        url: URL,
+        operationID: String,
+        response: HTTPResponse?,
+        responseBody: Data?,
+        targetType: Any.Type,
+        error: any Error
+    ) {
+        self.method = method
+        self.url = url
+        self.operationID = operationID
+        self.response = response
+        self.responseBody = responseBody
+        self.targetType = targetType
+        self.error = error
+    }
+}
+
+/// Called when `OpenAPIDynamic` receives a response but fails to decode it.
+public typealias DecodingFailureObserver = (DecodingFailureContext) -> Void
+
 /// A dynamic HTTP client that can make arbitrary HTTP requests with middleware support.
 /// This client is designed to work alongside static OpenAPI-generated clients,
 /// sharing the same middleware chain for consistency.
@@ -138,27 +183,84 @@ public final class OpenAPIDynamic {
     /// The middleware chain to apply to all requests.
     private let middleware: [any ClientMiddleware]
 
+    /// Observes failures thrown while decoding a response body.
+    private let decodingFailureObserver: DecodingFailureObserver?
+
     /// Creates a new dynamic client.
     /// - Parameters:
     ///   - session: The URLSession to use for HTTP requests. Defaults to `.shared`.
     ///   - middleware: The middleware chain to apply to requests. Defaults to empty.
+    ///   - decodingFailureObserver: Called when response decoding fails. Defaults to `nil`.
     public init(
         session: URLSession = .shared,
-        middleware: [any ClientMiddleware] = []
+        middleware: [any ClientMiddleware] = [],
+        decodingFailureObserver: DecodingFailureObserver? = nil
     ) {
         self.session = session
         self.middleware = middleware
+        self.decodingFailureObserver = decodingFailureObserver
     }
 
     /// Creates a new dynamic client with middleware.
     /// - Parameters:
     ///   - session: The URLSession to use for HTTP requests. Defaults to `.shared`.
+    ///   - decodingFailureObserver: Called when response decoding fails. Defaults to `nil`.
     ///   - middleware: The middleware to apply to requests.
     public convenience init(
         session: URLSession = .shared,
+        decodingFailureObserver: DecodingFailureObserver? = nil,
         middleware: any ClientMiddleware...
     ) {
-        self.init(session: session, middleware: middleware)
+        self.init(
+            session: session,
+            middleware: middleware,
+            decodingFailureObserver: decodingFailureObserver
+        )
+    }
+
+    private struct DecodingMetadata {
+        let method: HTTPRequest.Method
+        let url: URL
+        let operationID: String
+
+        init(method: HTTPRequest.Method, url: URL, operationID: String = "dynamic-request") {
+            self.method = method
+            self.url = url
+            self.operationID = operationID
+        }
+
+        init(_ builder: RequestBuilder) {
+            self.init(
+                method: builder.method,
+                url: builder.url,
+                operationID: builder.operationID ?? "dynamic-request"
+            )
+        }
+    }
+
+    private func observeDecoding<T>(
+        targetType: Any.Type,
+        metadata: DecodingMetadata,
+        response: HTTPResponse?,
+        responseBody: Data?,
+        _ decode: () throws -> T
+    ) throws -> T {
+        do {
+            return try decode()
+        } catch {
+            decodingFailureObserver?(
+                DecodingFailureContext(
+                    method: metadata.method,
+                    url: metadata.url,
+                    operationID: metadata.operationID,
+                    response: response,
+                    responseBody: responseBody,
+                    targetType: targetType,
+                    error: error
+                )
+            )
+            throw error
+        }
     }
 
     /// Performs an HTTP request with the configured middleware.
@@ -478,8 +580,15 @@ extension OpenAPIDynamic {
         if headers[.accept] == nil {
             headers[.accept] = "application/json"
         }
-        let (_, data) = try await sendRequestWithResponseBody(method: method, url: url, headers: headers, body: body)
-        return try decoder.decode(T.self, from: data ?? Data())
+        let (response, data) = try await sendRequestWithResponseBody(method: method, url: url, headers: headers, body: body)
+        return try observeDecoding(
+            targetType: T.self,
+            metadata: DecodingMetadata(method: method, url: url),
+            response: response,
+            responseBody: data
+        ) {
+            try decoder.decode(T.self, from: data ?? Data())
+        }
     }
 
     /// Performs an HTTP request with a builder and decodes the response body to the specified type.
@@ -497,14 +606,22 @@ extension OpenAPIDynamic {
         if requestBuilder.headers[.accept] == nil {
             requestBuilder.headers[.accept] = "application/json"
         }
-        let (_, data) = try await sendRequestWithResponseBody {
+        let metadata = DecodingMetadata(requestBuilder)
+        let (response, data) = try await sendRequestWithResponseBody {
             $0.method = requestBuilder.method
             $0.url = requestBuilder.url
             $0.headers = requestBuilder.headers
             $0.body = requestBuilder.body
             $0.operationID = requestBuilder.operationID
         }
-        return try decoder.decode(T.self, from: data ?? Data())
+        return try observeDecoding(
+            targetType: T.self,
+            metadata: metadata,
+            response: response,
+            responseBody: data
+        ) {
+            try decoder.decode(T.self, from: data ?? Data())
+        }
     }
 
     /// Performs an HTTP request, validates success, and decodes the response body to the specified type.
@@ -529,7 +646,14 @@ extension OpenAPIDynamic {
         }
         let (response, data) = try await sendRequestWithResponseBody(method: method, url: url, headers: headers, body: body)
         try response.validateSuccess(with: data)
-        return try decoder.decode(T.self, from: data ?? Data())
+        return try observeDecoding(
+            targetType: T.self,
+            metadata: DecodingMetadata(method: method, url: url),
+            response: response,
+            responseBody: data
+        ) {
+            try decoder.decode(T.self, from: data ?? Data())
+        }
     }
 
     /// Performs an HTTP request with a builder, validates success, and decodes the response body to the specified type.
@@ -547,6 +671,7 @@ extension OpenAPIDynamic {
         if requestBuilder.headers[.accept] == nil {
             requestBuilder.headers[.accept] = "application/json"
         }
+        let metadata = DecodingMetadata(requestBuilder)
         let (response, data) = try await sendRequestWithResponseBody {
             $0.method = requestBuilder.method
             $0.url = requestBuilder.url
@@ -555,7 +680,14 @@ extension OpenAPIDynamic {
             $0.operationID = requestBuilder.operationID
         }
         try response.validateSuccess(with: data)
-        return try decoder.decode(T.self, from: data ?? Data())
+        return try observeDecoding(
+            targetType: T.self,
+            metadata: metadata,
+            response: response,
+            responseBody: data
+        ) {
+            try decoder.decode(T.self, from: data ?? Data())
+        }
     }
 
     /// Performs an HTTP request and returns the response with the decoded body.
@@ -579,7 +711,16 @@ extension OpenAPIDynamic {
             headers[.accept] = "application/json"
         }
         let (response, data) = try await sendRequestWithResponseBody(method: method, url: url, headers: headers, body: body)
-        let decoded = try data.map { try decoder.decode(T.self, from: $0) }
+        let decoded = try data.map { body in
+            try observeDecoding(
+                targetType: T.self,
+                metadata: DecodingMetadata(method: method, url: url),
+                response: response,
+                responseBody: data
+            ) {
+                try decoder.decode(T.self, from: body)
+            }
+        }
         return (response, decoded)
     }
 
@@ -598,6 +739,7 @@ extension OpenAPIDynamic {
         if requestBuilder.headers[.accept] == nil {
             requestBuilder.headers[.accept] = "application/json"
         }
+        let metadata = DecodingMetadata(requestBuilder)
         let (response, data) = try await sendRequestWithResponseBody {
             $0.method = requestBuilder.method
             $0.url = requestBuilder.url
@@ -605,7 +747,16 @@ extension OpenAPIDynamic {
             $0.body = requestBuilder.body
             $0.operationID = requestBuilder.operationID
         }
-        let decoded = try data.map { try decoder.decode(T.self, from: $0) }
+        let decoded = try data.map { body in
+            try observeDecoding(
+                targetType: T.self,
+                metadata: metadata,
+                response: response,
+                responseBody: data
+            ) {
+                try decoder.decode(T.self, from: body)
+            }
+        }
         return (response, decoded)
     }
 
@@ -629,7 +780,14 @@ extension OpenAPIDynamic {
         guard let decoder = decoders[response.status] else {
             throw UnexpectedStatusError.unexpectedStatus(response.status)
         }
-        return try decoder(data)
+        return try observeDecoding(
+            targetType: T.self,
+            metadata: DecodingMetadata(method: method, url: url),
+            response: response,
+            responseBody: data
+        ) {
+            try decoder(data)
+        }
     }
 
     /// Performs an HTTP request with a builder and status-specific decoding using a map of decoders.
@@ -642,11 +800,27 @@ extension OpenAPIDynamic {
         _ builder: (inout RequestBuilder) -> Void,
         decoders: [HTTPResponse.Status: (Data?) throws -> T]
     ) async throws -> T {
-        let (response, data) = try await sendRequestWithResponseBody(builder)
+        var requestBuilder = RequestBuilder()
+        builder(&requestBuilder)
+        let metadata = DecodingMetadata(requestBuilder)
+        let (response, data) = try await sendRequestWithResponseBody {
+            $0.method = requestBuilder.method
+            $0.url = requestBuilder.url
+            $0.headers = requestBuilder.headers
+            $0.body = requestBuilder.body
+            $0.operationID = requestBuilder.operationID
+        }
         guard let decoder = decoders[response.status] else {
             throw UnexpectedStatusError.unexpectedStatus(response.status)
         }
-        return try decoder(data)
+        return try observeDecoding(
+            targetType: T.self,
+            metadata: metadata,
+            response: response,
+            responseBody: data
+        ) {
+            try decoder(data)
+        }
     }
 
     /// Performs an HTTP request with type-based decoding using a map of types.
@@ -675,7 +849,14 @@ extension OpenAPIDynamic {
         guard let type = typeMap[response.status.code] else {
             throw UnexpectedStatusError.unexpectedStatus(response.status)
         }
-        return try decode(type, from: data, using: decoder)
+        return try observeDecoding(
+            targetType: type,
+            metadata: DecodingMetadata(method: method, url: url),
+            response: response,
+            responseBody: data
+        ) {
+            try decode(type, from: data, using: decoder)
+        }
     }
 
     /// Performs an HTTP request with a builder and type-based decoding using a map of types.
@@ -695,6 +876,7 @@ extension OpenAPIDynamic {
         if requestBuilder.headers[.accept] == nil {
             requestBuilder.headers[.accept] = "application/json"
         }
+        let metadata = DecodingMetadata(requestBuilder)
         let (response, data) = try await sendRequestWithResponseBody {
             $0.method = requestBuilder.method
             $0.url = requestBuilder.url
@@ -705,7 +887,14 @@ extension OpenAPIDynamic {
         guard let type = typeMap[response.status.code] else {
             throw UnexpectedStatusError.unexpectedStatus(response.status)
         }
-        return try decode(type, from: data, using: decoder)
+        return try observeDecoding(
+            targetType: type,
+            metadata: metadata,
+            response: response,
+            responseBody: data
+        ) {
+            try decode(type, from: data, using: decoder)
+        }
     }
 
     /// Performs an HTTP request with flexible decoding using a custom closure.
@@ -725,7 +914,14 @@ extension OpenAPIDynamic {
         decoder: (HTTPResponse, Data?) throws -> T
     ) async throws -> T {
         let (response, data) = try await sendRequestWithResponseBody(method: method, url: url, headers: headers, body: body)
-        return try decoder(response, data)
+        return try observeDecoding(
+            targetType: T.self,
+            metadata: DecodingMetadata(method: method, url: url),
+            response: response,
+            responseBody: data
+        ) {
+            try decoder(response, data)
+        }
     }
 
     /// Performs an HTTP request with a builder and flexible decoding using a custom closure.
@@ -738,8 +934,24 @@ extension OpenAPIDynamic {
         _ builder: (inout RequestBuilder) -> Void,
         decoder: (HTTPResponse, Data?) throws -> T
     ) async throws -> T {
-        let (response, data) = try await sendRequestWithResponseBody(builder)
-        return try decoder(response, data)
+        var requestBuilder = RequestBuilder()
+        builder(&requestBuilder)
+        let metadata = DecodingMetadata(requestBuilder)
+        let (response, data) = try await sendRequestWithResponseBody {
+            $0.method = requestBuilder.method
+            $0.url = requestBuilder.url
+            $0.headers = requestBuilder.headers
+            $0.body = requestBuilder.body
+            $0.operationID = requestBuilder.operationID
+        }
+        return try observeDecoding(
+            targetType: T.self,
+            metadata: metadata,
+            response: response,
+            responseBody: data
+        ) {
+            try decoder(response, data)
+        }
     }
 }
 

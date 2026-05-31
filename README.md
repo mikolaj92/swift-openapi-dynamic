@@ -16,6 +16,7 @@ When using swift-openapi-generator, most of your API calls are handled by static
 - **Middleware compatibility**: Share middleware with static swift-openapi-generator clients
 - **Flexible request building**: Use a fluent API to construct requests
 - **Codable decoding**: Automatic JSON decoding with type safety
+- **Decoding observability**: Inspect response decoding failures from one client-level hook
 - **Status-specific decoding**: Handle different response models based on HTTP status codes
 - **Response handling**: Get both response metadata and body data
 - **Error handling**: Built-in HTTP status validation and structured error types
@@ -26,7 +27,7 @@ Add this package to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/mikolaj92/swift-openapi-dynamic", from: "1.0.0"),
+    .package(url: "https://github.com/mikolaj92/swift-openapi-dynamic", from: "1.1.0"),
     .package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.0.0"),
     .package(url: "https://github.com/apple/swift-openapi-urlsession", from: "1.0.0"),
 ],
@@ -46,6 +47,25 @@ let client = OpenAPIDynamic(
     middleware: [YourMiddleware()]
 )
 ```
+
+### Decoding Observability
+
+Provide `decodingFailureObserver` to receive one callback whenever a response is received but decoding fails. The callback includes request metadata, operation ID, response status, response body, expected Swift type, and the thrown decoding error.
+
+```swift
+let client = OpenAPIDynamic(
+    middleware: [YourMiddleware()],
+    decodingFailureObserver: { context in
+        print("Failed to decode \(context.targetType)")
+        print("Request: \(context.method.rawValue) \(context.url)")
+        print("Operation ID: \(context.operationID)")
+        print("Status: \(context.response?.status.code ?? -1)")
+        print("Error: \(context.error)")
+    }
+)
+```
+
+This observer does not replace middleware. Middleware still sees transport-level request and response data. `decodingFailureObserver` runs after the response body is collected, at the exact point where `JSONDecoder` or a custom decoder closure throws.
 
 ### Smart Defaults
 
