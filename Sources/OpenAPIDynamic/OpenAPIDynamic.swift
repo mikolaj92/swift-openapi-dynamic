@@ -170,7 +170,7 @@ public struct DecodingFailureContext {
 }
 
 /// Called when `OpenAPIDynamic` receives a response but fails to decode it.
-public typealias DecodingFailureObserver = (DecodingFailureContext) -> Void
+public typealias DecodingFailureHandler = @Sendable (DecodingFailureContext) -> Void
 
 /// A dynamic HTTP client that can make arbitrary HTTP requests with middleware support.
 /// This client is designed to work alongside static OpenAPI-generated clients,
@@ -183,38 +183,38 @@ public final class OpenAPIDynamic {
     /// The middleware chain to apply to all requests.
     private let middleware: [any ClientMiddleware]
 
-    /// Observes failures thrown while decoding a response body.
-    private let decodingFailureObserver: DecodingFailureObserver?
+    /// Handles failures thrown while decoding a response body.
+    private let decodingFailureHandler: DecodingFailureHandler?
 
     /// Creates a new dynamic client.
     /// - Parameters:
     ///   - session: The URLSession to use for HTTP requests. Defaults to `.shared`.
     ///   - middleware: The middleware chain to apply to requests. Defaults to empty.
-    ///   - decodingFailureObserver: Called when response decoding fails. Defaults to `nil`.
+    ///   - decodingFailureHandler: Called when response decoding fails. Defaults to `nil`.
     public init(
         session: URLSession = .shared,
         middleware: [any ClientMiddleware] = [],
-        decodingFailureObserver: DecodingFailureObserver? = nil
+        decodingFailureHandler: DecodingFailureHandler? = nil
     ) {
         self.session = session
         self.middleware = middleware
-        self.decodingFailureObserver = decodingFailureObserver
+        self.decodingFailureHandler = decodingFailureHandler
     }
 
     /// Creates a new dynamic client with middleware.
     /// - Parameters:
     ///   - session: The URLSession to use for HTTP requests. Defaults to `.shared`.
-    ///   - decodingFailureObserver: Called when response decoding fails. Defaults to `nil`.
+    ///   - decodingFailureHandler: Called when response decoding fails. Defaults to `nil`.
     ///   - middleware: The middleware to apply to requests.
     public convenience init(
         session: URLSession = .shared,
-        decodingFailureObserver: DecodingFailureObserver? = nil,
+        decodingFailureHandler: DecodingFailureHandler? = nil,
         middleware: any ClientMiddleware...
     ) {
         self.init(
             session: session,
             middleware: middleware,
-            decodingFailureObserver: decodingFailureObserver
+            decodingFailureHandler: decodingFailureHandler
         )
     }
 
@@ -248,7 +248,7 @@ public final class OpenAPIDynamic {
         do {
             return try decode()
         } catch {
-            decodingFailureObserver?(
+            decodingFailureHandler?(
                 DecodingFailureContext(
                     method: metadata.method,
                     url: metadata.url,

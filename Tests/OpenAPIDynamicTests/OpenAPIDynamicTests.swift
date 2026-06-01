@@ -68,7 +68,7 @@ import HTTPTypes
     }
 }
 
-@Test func testDecodingFailureObserverReceivesRequestAndResponseContext() async throws {
+@Test func testDecodingFailureHandlerReceivesRequestAndResponseContext() async throws {
     struct ObservedUser: Decodable {
         let id: Int
     }
@@ -76,12 +76,10 @@ import HTTPTypes
     let url = URL(string: "https://api.example.com/users/1")!
     let responseBody = Data(#"{"id":"not-an-int"}"#.utf8)
     let session = makeMockSession(body: responseBody)
-    var context: DecodingFailureContext?
+    let recorder = DecodingFailureContextRecorder()
     let client = OpenAPIDynamic(
         session: session,
-        decodingFailureObserver: {
-            context = $0
-        }
+        decodingFailureHandler: recorder.record
     )
 
     do {
@@ -97,13 +95,14 @@ import HTTPTypes
         Issue.record("Expected Swift.DecodingError, got \(error)")
     }
 
-    #expect(context?.method == .get)
-    #expect(context?.url == url)
-    #expect(context?.operationID == "get-user")
-    #expect(context?.response?.status == .ok)
-    #expect(context?.responseBody == responseBody)
-    #expect(context?.targetType == ObservedUser.self)
-    #expect(context?.error is Swift.DecodingError)
+    let context = try #require(recorder.context)
+    #expect(context.method == .get)
+    #expect(context.url == url)
+    #expect(context.operationID == "get-user")
+    #expect(context.response?.status == .ok)
+    #expect(context.responseBody == responseBody)
+    #expect(ObjectIdentifier(context.targetType) == ObjectIdentifier(ObservedUser.self))
+    #expect(context.error is Swift.DecodingError)
 }
 
 private func makeMockSession(
@@ -122,6 +121,23 @@ private func makeMockSession(
         return (response, body)
     }
     return URLSession(configuration: configuration)
+}
+
+private final class DecodingFailureContextRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _context: DecodingFailureContext?
+
+    var context: DecodingFailureContext? {
+        lock.lock()
+        defer { lock.unlock() }
+        return _context
+    }
+
+    func record(_ context: DecodingFailureContext) {
+        lock.lock()
+        _context = context
+        lock.unlock()
+    }
 }
 
 private final class MockURLProtocol: URLProtocol {
