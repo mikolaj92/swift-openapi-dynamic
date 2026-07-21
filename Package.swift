@@ -14,8 +14,8 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-openapi-urlsession", from: "1.0.0"),
+        .package(url: "https://github.com/mikolaj92/swift-openapi-runtime", revision: "ee4c9b945254acab0af4a617370c1de4be4d49dc"),
+        .package(url: "https://github.com/mikolaj92/swift-openapi-urlsession", revision: "7f12434a30ba31060cedec4b412fe01599d90796"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
