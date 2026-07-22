@@ -27,9 +27,9 @@ Add this package to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/mikolaj92/swift-openapi-dynamic", from: "1.1.0"),
-    .package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.0.0"),
-    .package(url: "https://github.com/apple/swift-openapi-urlsession", from: "1.0.0"),
+    .package(url: "https://github.com/mikolaj92/swift-openapi-dynamic", from: "1.2.0"),
+    .package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.8.2"),
+    .package(url: "https://github.com/apple/swift-openapi-urlsession", from: "1.2.0"),
 ],
 ```
 
@@ -50,12 +50,12 @@ let client = OpenAPIDynamic(
 
 ### Decoding Observability
 
-Provide `decodingFailureObserver` to receive one callback whenever a response is received but decoding fails. The callback includes request metadata, operation ID, response status, response body, expected Swift type, and the thrown decoding error.
+Provide `decodingFailureHandler` to receive one callback whenever a response is received but decoding fails. The callback includes request metadata, operation ID, response status, response body, expected Swift type, and the thrown decoding error.
 
 ```swift
 let client = OpenAPIDynamic(
     middleware: [YourMiddleware()],
-    decodingFailureObserver: { context in
+    decodingFailureHandler: { context in
         print("Failed to decode \(context.targetType)")
         print("Request: \(context.method.rawValue) \(context.url)")
         print("Operation ID: \(context.operationID)")
@@ -65,7 +65,7 @@ let client = OpenAPIDynamic(
 )
 ```
 
-This observer does not replace middleware. Middleware still sees transport-level request and response data. `decodingFailureObserver` runs after the response body is collected, at the exact point where `JSONDecoder` or a custom decoder closure throws.
+This handler does not replace middleware. Middleware still sees transport-level request and response data. `decodingFailureHandler` runs after the response body is collected, at the exact point where `JSONDecoder` or a custom decoder closure throws.
 
 ### Smart Defaults
 
@@ -105,26 +105,12 @@ let (response, bodyData) = try await client.sendRequestWithResponseBody(
     url: dynamicURL
 )
 
-// Request with body and headers
-let response = try await client.request(
-    method: .post,
-    url: someDynamicURL,
-    headers: [.contentType: "application/json"],
-    body: jsonData
-)
-
-// Request with Encodable body (automatically JSON-encoded and content-type set)
+// Request with an Encodable body (automatically JSON-encoded and content type set)
 let user = User(name: "John", email: "john@example.com")
-let response = try await client.request(
+let response = try await client.sendRequest(
     method: .post,
     url: someDynamicURL,
     body: user
-)
-
-// Get response with body data
-let (response, bodyData) = try await client.requestWithBody(
-    method: .get,
-    url: dynamicURL
 )
 ```
 
@@ -157,6 +143,23 @@ let response = try await client.sendRequestAndValidate { builder in
 let response = try await client.sendRequest(method: .get, url: healthURL)
 try response.validateSuccess()
 ```
+
+### Response buffering and streaming
+
+`sendRequest`, decoding methods, validation methods, and `sendRequestWithResponseBody` collect response data. Collection is bounded by `maximumResponseBodyBytes`, which defaults to 10 MiB; exceeding the limit throws while collecting the body. Set the limit explicitly when constructing the client if your API needs a different bound.
+
+Use `sendRequestStreaming` when the response must remain an `HTTPBody` stream instead of being collected into `Data`. The streaming overloads are available for both direct parameters and the request builder; the caller owns consuming the returned body.
+
+```swift
+let client = OpenAPIDynamic(maximumResponseBodyBytes: 2 * 1024 * 1024)
+let (response, body): (HTTPResponse, HTTPBody?) = try await client.sendRequestStreaming(
+    method: .get,
+    url: downloadURL,
+    operationID: "download-file"
+)
+```
+
+Requests that do not provide an operation ID use `defaultOperationID`, whose default value is `"dynamic-request"`. A builder can override it with `setOperationID`.
 
 ## Codable Decoding
 
@@ -202,7 +205,7 @@ default: throw UnexpectedStatusError.unexpectedStatus(response.status)
 }
 
 // Using status decoders
-let user: User = try await client.requestWithStatusDecoding(
+let user: User = try await client.sendRequestWithStatusDecoding(
     method: .get,
     url: userURL,
     decoders: [.ok: { try decode(User.self, from: $0) }]
@@ -232,7 +235,7 @@ let user = try decode(User.self, from: data)
 // Custom decoder
 let decoder = JSONDecoder()
 decoder.dateDecodingStrategy = .iso8601
-let user: User = try await client.request(method: .get, url: userURL, decoder: decoder)
+let user: User = try await client.sendRequest(method: .get, url: userURL, decoder: decoder)
 ```
 
 ### Sharing Middleware
@@ -240,17 +243,20 @@ let user: User = try await client.request(method: .get, url: userURL, decoder: d
 The client accepts any middleware that conforms to `ClientMiddleware` from OpenAPIRuntime:
 
 ```swift
+import Foundation
+import HTTPTypes
+import OpenAPIDynamic
 import OpenAPIRuntime
-
 struct LoggingMiddleware: ClientMiddleware {
     func intercept(
         _ request: HTTPRequest,
         body: HTTPBody?,
         baseURL: URL,
         operationID: String,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
     ) async throws -> (HTTPResponse, HTTPBody?) {
-        print("Making request to \(request.path ?? "")")
+        let path = request.path ?? ""
+        print("Making request to \(path)")
         return try await next(request, body, baseURL)
     }
 }
@@ -262,27 +268,20 @@ let client = OpenAPIDynamic(
 
 ## Integration with Static Clients
 
-Use the same middleware instances for both static and dynamic clients:
+`ClientMiddleware` is the middleware protocol used by generated clients. Keep one array of middleware instances and pass that array to both a generated client and `OpenAPIDynamic`; the dynamic client executes the same instances around its underlying `URLSession` transport.
 
 ```swift
-let middleware = [AuthMiddleware(), LoggingMiddleware()]
-
-// Static client (generated by swift-openapi-generator)
-let staticClient = Client(
-    serverURL: baseURL,
-    transport: URLSessionTransport(),
-    middlewares: middleware
-)
-
-// Dynamic client (this library)
-let dynamicClient = OpenAPIDynamic(
-    middleware: middleware
-)
+let middleware: [any ClientMiddleware] = [AuthMiddleware(), LoggingMiddleware()]
+let dynamicClient = OpenAPIDynamic(middleware: middleware)
 ```
+
+When you have a generated `Client`, pass this same `middleware` array to the generated client's middleware parameter. The exact generated initializer depends on the API document and generator configuration, so this README does not invent a `Client` initializer.
+
+The example project has no generated `Client`; its `LoggingMiddleware` and shared array demonstrate actual middleware execution with `OpenAPIDynamic`.
 
 ## Error Handling
 
-The library provides structured error handling with body data preservation:
+The library provides structured HTTP status errors with the collected response body when using validation:
 
 ```swift
 do {
@@ -291,34 +290,34 @@ do {
     switch error {
     case .statusError(let response, let body):
         print("HTTP error: \(response.status)")
-        if let body = body {
+        if let body {
             let errorModel = try? JSONDecoder().decode(APIError.self, from: body)
-            print("Error details: \(errorModel)")
+            print("Error details: \(String(describing: errorModel))")
         }
     }
 } catch let error as DecodingError {
-    switch error {
-    case .noData:
-        print("Response had no body data")
-    }
+    if case .noData = error { print("Response had no body data") }
 } catch let error as UnexpectedStatusError {
     print("Unexpected status: \(error.localizedDescription)")
-} catch {
-    print("Other error: \(error)")
 }
 ```
+
+Transport and middleware failures are wrapped in the OpenAPIRuntime `ClientError` envelope, preserving the operation ID, request context, cause description, and underlying error. Transport failures use `"Transport threw an error."`; middleware failures identify the middleware type. These errors are distinct from HTTP status validation errors and decoding errors.
 
 ### Error Types
 
 - `HTTPError.statusError`: HTTP errors with optional response body
 - `DecodingError.noData`: Missing response data during decoding
 - `UnexpectedStatusError.unexpectedStatus`: Unmapped HTTP status codes
+- `ClientError`: Transport or middleware failures with generated-client-compatible context
+
 
 ## Requirements
 
-- Swift 6.2+
-- macOS 10.15+
-- Compatible with swift-openapi-runtime and swift-openapi-urlsession
+- Swift 6.2+ toolchain
+- macOS 10.15+, iOS 13+, tvOS 13+, watchOS 6+
+- swift-openapi-runtime 1.8.2+
+- swift-openapi-urlsession 1.2.0+
 
 ## Contributing
 

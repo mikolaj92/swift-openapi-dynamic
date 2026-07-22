@@ -186,35 +186,48 @@ public final class OpenAPIDynamic {
     /// Handles failures thrown while decoding a response body.
     private let decodingFailureHandler: DecodingFailureHandler?
 
+    /// The maximum response body size collected by `Data`-returning APIs.
+    public let maximumResponseBodyBytes: Int
+
+    /// The operation ID used by overloads that do not accept a request builder.
+    public let defaultOperationID: String
+
     /// Creates a new dynamic client.
     /// - Parameters:
     ///   - session: The URLSession to use for HTTP requests. Defaults to `.shared`.
     ///   - middleware: The middleware chain to apply to requests. Defaults to empty.
     ///   - decodingFailureHandler: Called when response decoding fails. Defaults to `nil`.
+    ///   - maximumResponseBodyBytes: Maximum bytes collected by `Data`-returning APIs.
+    ///   - defaultOperationID: Operation ID used by overloads without a request builder.
     public init(
         session: URLSession = .shared,
         middleware: [any ClientMiddleware] = [],
-        decodingFailureHandler: DecodingFailureHandler? = nil
+        decodingFailureHandler: DecodingFailureHandler? = nil,
+        maximumResponseBodyBytes: Int = 10 * 1024 * 1024,
+        defaultOperationID: String = "dynamic-request"
     ) {
+        precondition(maximumResponseBodyBytes >= 0, "maximumResponseBodyBytes must not be negative")
         self.session = session
         self.middleware = middleware
         self.decodingFailureHandler = decodingFailureHandler
+        self.maximumResponseBodyBytes = maximumResponseBodyBytes
+        self.defaultOperationID = defaultOperationID
     }
 
     /// Creates a new dynamic client with middleware.
-    /// - Parameters:
-    ///   - session: The URLSession to use for HTTP requests. Defaults to `.shared`.
-    ///   - decodingFailureHandler: Called when response decoding fails. Defaults to `nil`.
-    ///   - middleware: The middleware to apply to requests.
     public convenience init(
         session: URLSession = .shared,
         decodingFailureHandler: DecodingFailureHandler? = nil,
+        maximumResponseBodyBytes: Int = 10 * 1024 * 1024,
+        defaultOperationID: String = "dynamic-request",
         middleware: any ClientMiddleware...
     ) {
         self.init(
             session: session,
             middleware: middleware,
-            decodingFailureHandler: decodingFailureHandler
+            decodingFailureHandler: decodingFailureHandler,
+            maximumResponseBodyBytes: maximumResponseBodyBytes,
+            defaultOperationID: defaultOperationID
         )
     }
 
@@ -223,19 +236,38 @@ public final class OpenAPIDynamic {
         let url: URL
         let operationID: String
 
-        init(method: HTTPRequest.Method, url: URL, operationID: String = "dynamic-request") {
+        init(method: HTTPRequest.Method, url: URL, operationID: String) {
             self.method = method
             self.url = url
             self.operationID = operationID
         }
 
-        init(_ builder: RequestBuilder) {
+        init(_ builder: RequestBuilder, defaultOperationID: String) {
             self.init(
                 method: builder.method,
                 url: builder.url,
-                operationID: builder.operationID ?? "dynamic-request"
+                operationID: builder.operationID ?? defaultOperationID
             )
         }
+    }
+
+    private static func decompose(_ url: URL) throws -> (baseURL: URL, path: String) {
+        guard
+            var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+            components.scheme != nil,
+            components.host != nil
+        else {
+            throw InvalidRequestURLError(url: url)
+        }
+
+        let path = components.percentEncodedPath + (components.percentEncodedQuery.map { "?" + $0 } ?? "")
+        components.percentEncodedPath = ""
+        components.percentEncodedQuery = nil
+        components.fragment = nil
+        guard let baseURL = components.url else {
+            throw InvalidRequestURLError(url: url)
+        }
+        return (baseURL, path)
     }
 
     private func observeDecoding<T>(
@@ -310,53 +342,42 @@ public final class OpenAPIDynamic {
         return try await sendRequest(method: method, url: url, headers: headers, body: data)
     }
 
-    /// Performs an HTTP request with the configured middleware and returns both response and body.
-    /// - Parameters:
-    ///   - method: The HTTP method.
-    ///   - url: The URL for the request.
-    ///   - headers: Additional headers to include.
-    ///   - body: The request body data.
-    /// - Returns: A tuple containing the HTTP response and optional body data.
-    /// - Throws: Any error that occurs during the request or middleware processing.
+    public func sendRequestStreaming(
+        method: HTTPRequest.Method,
+        url: URL,
+        headers: HTTPFields = [:],
+        body: Data? = nil,
+        operationID: String? = nil
+    ) async throws -> (HTTPResponse, HTTPBody?) {
+        let (baseURL, path) = try Self.decompose(url)
+        let request = HTTPRequest(method: method, scheme: nil, authority: nil, path: path, headerFields: headers)
+        return try await MiddlewareTransport(session: session, middleware: middleware).send(
+            request,
+            body: body.map(HTTPBody.init),
+            baseURL: baseURL,
+            operationID: operationID ?? defaultOperationID
+        )
+    }
+
+    /// Performs an HTTP request and collects its response body up to the configured limit.
     public func sendRequestWithResponseBody(
         method: HTTPRequest.Method,
         url: URL,
         headers: HTTPFields = [:],
         body: Data? = nil
     ) async throws -> (HTTPResponse, Data?) {
-        let baseURL = URL(string: "\(url.scheme ?? "https")://\(url.host ?? "localhost")")!
-        let path = url.path + (url.query.map { "?" + $0 } ?? "")
-
-        let request = HTTPRequest(
+        let (response, responseBody) = try await sendRequestStreaming(
             method: method,
-            scheme: nil,
-            authority: nil,
-            path: path,
-            headerFields: headers
+            url: url,
+            headers: headers,
+            body: body
         )
-
-        let httpBody = body.map { HTTPBody($0) }
-
-        // Apply middleware chain
-        let transport = MiddlewareTransport(
-            session: session,
-            middleware: middleware
-        )
-
-        let (response, responseBody) = try await transport.send(
-            request,
-            body: httpBody,
-            baseURL: baseURL,
-            operationID: "dynamic-request"
-        )
-
-        // Collect response body data if present
-        let responseData: Data? = if let responseBody {
-            try await Data(collecting: responseBody, upTo: .max)
+        let responseData: Data?
+        if let responseBody {
+            responseData = try await Data(collecting: responseBody, upTo: maximumResponseBodyBytes)
         } else {
-            nil
+            responseData = nil
         }
-
         return (response, responseData)
     }
 
@@ -439,50 +460,42 @@ public final class OpenAPIDynamic {
         return response
     }
 
-    /// Performs an HTTP request with the configured middleware using a request builder.
-    /// - Parameter builder: A closure that configures the request.
-    /// - Returns: A tuple containing the HTTP response and optional body data.
-    /// - Throws: Any error that occurs during the request or middleware processing.
+    /// Performs a streaming HTTP request configured by a request builder.
+    public func sendRequestStreaming(
+        _ builder: (inout RequestBuilder) -> Void
+    ) async throws -> (HTTPResponse, HTTPBody?) {
+        var requestBuilder = RequestBuilder()
+        builder(&requestBuilder)
+        return try await sendRequestStreaming(
+            method: requestBuilder.method,
+            url: requestBuilder.url,
+            headers: requestBuilder.headers,
+            body: requestBuilder.body,
+            operationID: requestBuilder.operationID
+        )
+    }
+
+    /// Performs an HTTP request configured by a builder and collects its response body up to the configured limit.
     public func sendRequestWithResponseBody(
         _ builder: (inout RequestBuilder) -> Void
     ) async throws -> (HTTPResponse, Data?) {
-        var requestBuilder = RequestBuilder()
-        builder(&requestBuilder)
-
-        let baseURL = URL(string: "\(requestBuilder.url.scheme ?? "https")://\(requestBuilder.url.host ?? "localhost")")!
-        let path = requestBuilder.url.path + (requestBuilder.url.query.map { "?" + $0 } ?? "")
-
-        let request = HTTPRequest(
-            method: requestBuilder.method,
-            scheme: nil,
-            authority: nil,
-            path: path,
-            headerFields: requestBuilder.headers
-        )
-
-        let httpBody = requestBuilder.body.map { HTTPBody($0) }
-
-        // Apply middleware chain
-        let transport = MiddlewareTransport(
-            session: session,
-            middleware: middleware
-        )
-
-        let (response, responseBody) = try await transport.send(
-            request,
-            body: httpBody,
-            baseURL: baseURL,
-            operationID: requestBuilder.operationID ?? "dynamic-request"
-        )
-
-        // Collect response body data if present
-        let responseData: Data? = if let responseBody {
-            try await Data(collecting: responseBody, upTo: .max)
+        let (response, responseBody) = try await sendRequestStreaming(builder)
+        let responseData: Data?
+        if let responseBody {
+            responseData = try await Data(collecting: responseBody, upTo: maximumResponseBodyBytes)
         } else {
-            nil
+            responseData = nil
         }
-
         return (response, responseData)
+    }
+}
+
+/// The supplied request URL cannot be represented as an absolute HTTP request.
+public struct InvalidRequestURLError: Error, LocalizedError, Equatable {
+    public let url: URL
+
+    public var errorDescription: String? {
+        "Invalid absolute request URL: \(url.absoluteString)"
     }
 }
 
@@ -583,7 +596,7 @@ extension OpenAPIDynamic {
         let (response, data) = try await sendRequestWithResponseBody(method: method, url: url, headers: headers, body: body)
         return try observeDecoding(
             targetType: T.self,
-            metadata: DecodingMetadata(method: method, url: url),
+            metadata: DecodingMetadata(method: method, url: url, operationID: defaultOperationID),
             response: response,
             responseBody: data
         ) {
@@ -606,7 +619,7 @@ extension OpenAPIDynamic {
         if requestBuilder.headers[.accept] == nil {
             requestBuilder.headers[.accept] = "application/json"
         }
-        let metadata = DecodingMetadata(requestBuilder)
+        let metadata = DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
         let (response, data) = try await sendRequestWithResponseBody {
             $0.method = requestBuilder.method
             $0.url = requestBuilder.url
@@ -648,7 +661,7 @@ extension OpenAPIDynamic {
         try response.validateSuccess(with: data)
         return try observeDecoding(
             targetType: T.self,
-            metadata: DecodingMetadata(method: method, url: url),
+            metadata: DecodingMetadata(method: method, url: url, operationID: defaultOperationID),
             response: response,
             responseBody: data
         ) {
@@ -671,7 +684,7 @@ extension OpenAPIDynamic {
         if requestBuilder.headers[.accept] == nil {
             requestBuilder.headers[.accept] = "application/json"
         }
-        let metadata = DecodingMetadata(requestBuilder)
+        let metadata = DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
         let (response, data) = try await sendRequestWithResponseBody {
             $0.method = requestBuilder.method
             $0.url = requestBuilder.url
@@ -714,7 +727,7 @@ extension OpenAPIDynamic {
         let decoded = try data.map { body in
             try observeDecoding(
                 targetType: T.self,
-                metadata: DecodingMetadata(method: method, url: url),
+                metadata: DecodingMetadata(method: method, url: url, operationID: defaultOperationID),
                 response: response,
                 responseBody: data
             ) {
@@ -739,7 +752,7 @@ extension OpenAPIDynamic {
         if requestBuilder.headers[.accept] == nil {
             requestBuilder.headers[.accept] = "application/json"
         }
-        let metadata = DecodingMetadata(requestBuilder)
+        let metadata = DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
         let (response, data) = try await sendRequestWithResponseBody {
             $0.method = requestBuilder.method
             $0.url = requestBuilder.url
@@ -782,7 +795,7 @@ extension OpenAPIDynamic {
         }
         return try observeDecoding(
             targetType: T.self,
-            metadata: DecodingMetadata(method: method, url: url),
+            metadata: DecodingMetadata(method: method, url: url, operationID: defaultOperationID),
             response: response,
             responseBody: data
         ) {
@@ -802,7 +815,7 @@ extension OpenAPIDynamic {
     ) async throws -> T {
         var requestBuilder = RequestBuilder()
         builder(&requestBuilder)
-        let metadata = DecodingMetadata(requestBuilder)
+        let metadata = DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
         let (response, data) = try await sendRequestWithResponseBody {
             $0.method = requestBuilder.method
             $0.url = requestBuilder.url
@@ -851,7 +864,7 @@ extension OpenAPIDynamic {
         }
         return try observeDecoding(
             targetType: type,
-            metadata: DecodingMetadata(method: method, url: url),
+            metadata: DecodingMetadata(method: method, url: url, operationID: defaultOperationID),
             response: response,
             responseBody: data
         ) {
@@ -876,7 +889,7 @@ extension OpenAPIDynamic {
         if requestBuilder.headers[.accept] == nil {
             requestBuilder.headers[.accept] = "application/json"
         }
-        let metadata = DecodingMetadata(requestBuilder)
+        let metadata = DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
         let (response, data) = try await sendRequestWithResponseBody {
             $0.method = requestBuilder.method
             $0.url = requestBuilder.url
@@ -916,7 +929,7 @@ extension OpenAPIDynamic {
         let (response, data) = try await sendRequestWithResponseBody(method: method, url: url, headers: headers, body: body)
         return try observeDecoding(
             targetType: T.self,
-            metadata: DecodingMetadata(method: method, url: url),
+            metadata: DecodingMetadata(method: method, url: url, operationID: defaultOperationID),
             response: response,
             responseBody: data
         ) {
@@ -936,7 +949,7 @@ extension OpenAPIDynamic {
     ) async throws -> T {
         var requestBuilder = RequestBuilder()
         builder(&requestBuilder)
-        let metadata = DecodingMetadata(requestBuilder)
+        let metadata = DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
         let (response, data) = try await sendRequestWithResponseBody {
             $0.method = requestBuilder.method
             $0.url = requestBuilder.url
@@ -967,38 +980,54 @@ private struct MiddlewareTransport: ClientTransport {
         operationID: String
     ) async throws -> (HTTPResponse, HTTPBody?) {
         let transport = URLSessionTransport(configuration: .init(session: session))
-
-        // Apply middleware chain
-        var currentTransport: any ClientTransport = transport
-        for middleware in middleware.reversed() {
-            currentTransport = MiddlewareWrapper(
-                middleware: middleware,
-                next: currentTransport
+        @Sendable func clientError(
+            causeDescription: String,
+            underlyingError: any Error
+        ) -> ClientError {
+            ClientError(
+                operationID: operationID,
+                operationInput: request,
+                request: request,
+                requestBody: body,
+                baseURL: baseURL,
+                causeDescription: causeDescription,
+                underlyingError: underlyingError
             )
         }
 
-        return try await currentTransport.send(request, body: body, baseURL: baseURL, operationID: operationID)
-    }
-}
-
-/// A wrapper that applies a single middleware to a transport.
-private struct MiddlewareWrapper: ClientTransport {
-    let middleware: any ClientMiddleware
-    let next: any ClientTransport
-
-    func send(
-        _ request: HTTPRequest,
-        body: HTTPBody?,
-        baseURL: URL,
-        operationID: String
-    ) async throws -> (HTTPResponse, HTTPBody?) {
-        try await middleware.intercept(
-            request,
-            body: body,
-            baseURL: baseURL,
-            operationID: operationID
-        ) { request, body, baseURL in
-            try await next.send(request, body: body, baseURL: baseURL, operationID: operationID)
+        var next: @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?) = {
+            request, body, baseURL in
+            do {
+                return try await transport.send(request, body: body, baseURL: baseURL, operationID: operationID)
+            } catch let error as ClientError {
+                throw error
+            } catch {
+                throw clientError(causeDescription: "Transport threw an error.", underlyingError: error)
+            }
         }
+
+        for middleware in middleware.reversed() {
+            let downstream = next
+            next = { request, body, baseURL in
+                do {
+                    return try await middleware.intercept(
+                        request,
+                        body: body,
+                        baseURL: baseURL,
+                        operationID: operationID,
+                        next: downstream
+                    )
+                } catch let error as ClientError {
+                    throw error
+                } catch {
+                    throw clientError(
+                        causeDescription: "Middleware of type '\(type(of: middleware))' threw an error.",
+                        underlyingError: error
+                    )
+                }
+            }
+        }
+
+        return try await next(request, body, baseURL)
     }
 }

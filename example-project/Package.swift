@@ -8,8 +8,8 @@ let package = Package(
     platforms: [.macOS(.v10_15)],
     dependencies: [
         .package(name: "swift-openapi-dynamic", path: "../"),
-        .package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-openapi-urlsession", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.8.2"),
+        .package(url: "https://github.com/apple/swift-openapi-urlsession", from: "1.2.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.

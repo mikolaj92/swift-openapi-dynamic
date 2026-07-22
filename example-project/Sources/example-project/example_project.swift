@@ -3,6 +3,20 @@ import OpenAPIRuntime
 import Foundation
 import HTTPTypes
 
+struct LoggingMiddleware: ClientMiddleware {
+    func intercept(
+        _ request: HTTPRequest,
+        body: HTTPBody?,
+        baseURL: URL,
+        operationID: String,
+        next: @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+    ) async throws -> (HTTPResponse, HTTPBody?) {
+        let path = request.path ?? ""
+        print("   Middleware saw \(operationID): \(request.method.rawValue) \(path)")
+        return try await next(request, body, baseURL)
+    }
+}
+
 struct User: Codable {
     let id: Int
     let name: String
@@ -25,8 +39,12 @@ struct Post: Codable {
 struct example_project {
     static func main() async {
         do {
+            let loggingMiddleware = LoggingMiddleware()
+            let sharedMiddleware: [any ClientMiddleware] = [loggingMiddleware]
+            // A generated swift-openapi client can receive this same middleware array.
+            // This example project has no generated Client, so OpenAPIDynamic demonstrates execution.
             let client = OpenAPIDynamic(
-                middleware: []
+                middleware: sharedMiddleware
             )
 
             print("=== OpenAPIDynamic Example ===\n")

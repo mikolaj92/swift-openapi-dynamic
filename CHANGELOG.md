@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-22
+
+### Added
+- Added bounded response collection with a configurable 10 MiB default limit.
+- Added streaming request APIs returning `HTTPBody` without collecting the response.
+- Added configurable default and per-request operation IDs for middleware.
+
+### Fixed
+- Preserved ports, IPv6 hosts, userinfo, and percent-encoded paths and queries when forwarding absolute URLs through `URLSessionTransport`.
+- Rejected relative request URLs instead of silently constructing an invalid transport request.
+- Wrapped middleware and transport failures in generated-client-compatible `ClientError` context.
+- Made live-network integration tests explicit opt-in so routine test runs remain deterministic.
+
+### Changed
+- Raised the minimum `swift-openapi-runtime` version to 1.8.2 and `swift-openapi-urlsession` version to 1.2.0.
+
 ## [1.1.0] - 2026-05-31
 
 ### Added

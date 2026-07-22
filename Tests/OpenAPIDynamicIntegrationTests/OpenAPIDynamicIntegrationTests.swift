@@ -3,7 +3,13 @@ import Foundation
 import HTTPTypes
 @testable import OpenAPIDynamic
 
-@Suite("Integration Tests")
+@Suite(
+    "Integration Tests",
+    .enabled(
+        if: TestConfiguration.areLiveNetworkTestsEnabled,
+        "Set OPENAPI_DYNAMIC_ENABLE_LIVE_TESTS=1 to run live network integration tests"
+    )
+)
 struct OpenAPIDynamicIntegrationTests {
 
     let client = OpenAPIDynamic()

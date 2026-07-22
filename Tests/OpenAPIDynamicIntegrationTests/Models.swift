@@ -73,8 +73,10 @@ enum TestConfiguration {
     static let jsonPlaceholderBaseURL = URL(string: "https://jsonplaceholder.typicode.com")!
     static let timeout: TimeInterval = 30.0
 
-    static var isNetworkAvailable: Bool {
-        // Simple check - in a real implementation you might want more sophisticated network checking
-        true // Assume network is available for integration tests
+    /// Opt-in for live external network tests. Unset by default so `swift test` and CI
+    /// skip these flaky smoke tests. Set to `1` to run them manually:
+    /// `OPENAPI_DYNAMIC_ENABLE_LIVE_TESTS=1 swift test --filter OpenAPIDynamicIntegrationTests`
+    static var areLiveNetworkTestsEnabled: Bool {
+        ProcessInfo.processInfo.environment["OPENAPI_DYNAMIC_ENABLE_LIVE_TESTS"] == "1"
     }
 }
