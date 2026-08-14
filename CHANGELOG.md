@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Removed the README build badge that pointed at the deleted `daily_test.yml` GitHub Actions workflow.
 
+### Testing
+- Added a pytest check that README does not advertise the deleted `daily_test.yml` workflow badge.
+
 ## [1.2.0] - 2026-07-22
 
 ### Added
