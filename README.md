@@ -2,7 +2,6 @@
 
 [![Swift](https://img.shields.io/badge/Swift-6.2+-orange.svg)](https://swift.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Build](https://github.com/mikolaj92/swift-openapi-dynamic/actions/workflows/daily_test.yml/badge.svg)](https://github.com/mikolaj92/swift-openapi-dynamic/actions)
 
 A dynamic HTTP client for Swift that integrates with [swift-openapi-generator](https://github.com/apple/swift-openapi-generator), allowing you to make arbitrary HTTP requests while sharing middleware with your statically generated API clients.
 
