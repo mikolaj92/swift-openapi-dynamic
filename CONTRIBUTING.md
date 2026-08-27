@@ -89,4 +89,4 @@ By contributing to this project, you agree that your contributions will be licen
 
 ## Questions?
 
-If you have questions about contributing, please open an issue or start a discussion in the repository.
+If you have questions about contributing, please open an issue in the repository.
