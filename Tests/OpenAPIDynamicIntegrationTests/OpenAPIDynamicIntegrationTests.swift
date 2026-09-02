@@ -28,7 +28,7 @@ struct OpenAPIDynamicIntegrationTests {
     func testGetUserWithBuilder() async throws {
         let user: User = try await client.sendRequest { builder in
             builder.setMethod(.get)
-            builder.setURL("https://jsonplaceholder.typicode.com/users/1")
+            try builder.setURL("https://jsonplaceholder.typicode.com/users/1")
         }
 
         #expect(user.id == 1)
@@ -241,7 +241,7 @@ struct OpenAPIDynamicIntegrationTests {
         let response: HttpBinResponse = try await client.sendRequest { builder in
             builder.setMethod(.get)
             builder.setURL(url)
-            builder.setQuery(["param1": "value1", "param2": "value 2"])
+            try builder.setQuery(["param1": "value1", "param2": "value 2"])
         }
 
         #expect(response.args["param1"] == "value1")

@@ -8,14 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `RequestBuilder` now rejects invalid, missing, and uncomposable URLs before middleware or transport; string URL and query setters are throwing APIs.
+- Required decoded responses now report `DecodingError.noData` consistently for an absent body, including through `decodingFailureHandler`.
 - `HTTPError` equality now includes the full HTTP response and preserved body.
 - Updated issue templates to show the current `OpenAPIDynamic(middleware:)` and `sendRequest` API.
 - Removed the README build badge that pointed at the deleted `daily_test.yml` GitHub Actions workflow.
 
 ### Testing
+- Added deterministic local tests for every public decoding path, JSON header defaults and overrides, missing versus zero-byte bodies, and fail-closed builder behavior.
 - Added a pytest check that README does not advertise the deleted `daily_test.yml` workflow badge.
 
 ### Changed
+- Split the package implementation into focused builder, client, decoding, error, failure-observation, and middleware transport files without adding targets.
 - Declared immutable `OpenAPIDynamic` instances `Sendable` for use across Swift concurrency domains.
 
 ## [1.2.0] - 2026-07-22

@@ -115,13 +115,13 @@ let response = try await client.sendRequest(
 
 ### Using the Request Builder
 
-For more complex requests, use the fluent request builder:
+For more complex requests, use the fluent request builder. String URLs and query composition are throwing operations: invalid or missing absolute HTTP(S) destinations fail before middleware or transport runs.
 
 ```swift
 let (response, bodyData) = try await client.sendRequestWithResponseBody { builder in
     builder.setMethod(.post)
-    builder.setURL("https://api.example.com/api/v1/users")
-    builder.setQuery(["limit": "10"])
+    try builder.setURL("https://api.example.com/api/v1/users")
+    try builder.setQuery(["limit": "10"])
     builder.addHeader(.authorization, "Bearer \(token)")
     builder.addHeader(.contentType, "application/json")
     builder.setBody(userJSONData)
@@ -135,7 +135,7 @@ let (response, bodyData) = try await client.sendRequestWithResponseBody { builde
 // Automatically validate successful HTTP status (2xx)
 let response = try await client.sendRequestAndValidate { builder in
     builder.setMethod(.get)
-    builder.setURL("https://api.example.com/api/health")
+    try builder.setURL("https://api.example.com/api/health")
 }
 
 // Manual validation
@@ -165,6 +165,8 @@ Requests that do not provide an operation ID use `defaultOperationID`, whose def
 The library provides powerful Codable decoding capabilities for type-safe JSON handling.
 
 ### Basic Decoding
+
+All decoding overloads distinguish an absent response body from a present zero-byte body. APIs that require a decoded value throw `OpenAPIDynamic.DecodingError.noData` for an absent body; a present empty body is passed to the decoder and normally produces `Swift.DecodingError`. The optional `sendRequestWithResponseBody<T>` overload returns `nil` only when the transport or middleware returned no body.
 
 ```swift
 // Decode response to a specific type (automatically sets Accept: application/json)
