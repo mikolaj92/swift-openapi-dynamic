@@ -8,10 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `HTTPError` equality now includes the full HTTP response and preserved body.
+- Updated issue templates to show the current `OpenAPIDynamic(middleware:)` and `sendRequest` API.
 - Removed the README build badge that pointed at the deleted `daily_test.yml` GitHub Actions workflow.
 
 ### Testing
 - Added a pytest check that README does not advertise the deleted `daily_test.yml` workflow badge.
+
+### Changed
+- Declared immutable `OpenAPIDynamic` instances `Sendable` for use across Swift concurrency domains.
 
 ## [1.2.0] - 2026-07-22
 
@@ -32,9 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] - 2026-05-31
 
 ### Added
-- Added `DecodingFailureContext` and `DecodingFailureObserver`.
-- Added client-level `decodingFailureObserver` support for response decoding failures.
-- Observer context includes method, URL, operation ID, response, response body, target type, and thrown error.
+- Added `DecodingFailureContext` and the decoding-failure callback, now named `DecodingFailureHandler`.
+- Added client-level decoding-failure support, now exposed as `decodingFailureHandler`.
+- Handler context includes method, URL, operation ID, response, response body, target type, and thrown error.
 
 ## [1.0.0] - 2025-11-10
 

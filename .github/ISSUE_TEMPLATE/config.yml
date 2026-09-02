@@ -1,10 +1,10 @@
 blank_issues_enabled: true
 contact_links:
-  - name: 📖 Read the documentation
+  - name: Read the documentation
     url: https://github.com/mikolaj92/swift-openapi-dynamic/blob/main/README.md
     about: >
       Read the OpenAPIDynamic documentation and usage examples.
-  - name: 🪲 Report an issue using Feedback Assistant
+  - name: Report an issue using Feedback Assistant
     url: https://developer.apple.com/bug-reporting
     about: >
       Report an issue with Xcode or other closed source Apple developer

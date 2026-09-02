@@ -1,4 +1,4 @@
-name: ⚙️ Track a task
+name: Track a task
 description: >
   Tasks can be used to track internal work, extract individual subtasks from a
   larger issue, and can serve as umbrella issues themselves.
@@ -8,9 +8,8 @@ body:
     attributes:
       value: >
         This repository hosts issues for the OpenAPIDynamic library.
-        It does *not* track feedback on Xcode and other closed source Apple
-        developer software such as URLSession itself; please direct it to
-        [Feedback Assistant](https://developer.apple.com/bug-reporting) instead.
+        For Xcode or Apple platform-tooling problems, use
+        [Feedback Assistant](https://developer.apple.com/bug-reporting).
 
         ___
   - type: textarea

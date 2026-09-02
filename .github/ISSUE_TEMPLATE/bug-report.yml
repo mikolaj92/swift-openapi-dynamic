@@ -1,4 +1,4 @@
-name: 🐞 Report a bug
+name: Report a bug
 description: >
   Report a deviation from expected or documented behavior, but not a crash.
 labels: [bug]
@@ -7,9 +7,8 @@ body:
     attributes:
       value: >
         This repository hosts issues for the OpenAPIDynamic library.
-        It does *not* track feedback on Xcode and other closed source Apple
-        developer software such as URLSession itself; please direct it to
-        [Feedback Assistant](https://developer.apple.com/bug-reporting) instead.
+        For Xcode or Apple platform-tooling problems, use
+        [Feedback Assistant](https://developer.apple.com/bug-reporting).
 
         ___
   - type: textarea
@@ -39,12 +38,9 @@ body:
         import OpenAPIDynamic
         import OpenAPIRuntime
 
-        let client = OpenAPIDynamic(
-            baseURL: URL(string: "https://api.example.com")!,
-            middleware: []
-        )
-
-        let response = try await client.request(method: .get, url: someURL)
+        let client = OpenAPIDynamic(middleware: [])
+        let url = URL(string: "https://api.example.com/items")!
+        let response = try await client.sendRequest(method: .get, url: url)
         ```
     validations:
       required: true
