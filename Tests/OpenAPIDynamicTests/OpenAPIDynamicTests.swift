@@ -15,7 +15,7 @@ import Testing
   var builder = RequestBuilder()
 
   builder.setMethod(.post)
-  builder.setURL("https://api.example.com/users?limit=10")
+  try builder.setURL("https://api.example.com/users?limit=10")
   builder.addHeader(.contentType, "application/json")
   builder.setBody("{\"name\":\"test\"}".data(using: .utf8))
 
@@ -492,13 +492,13 @@ func testStreamingResponse() async throws {
 
 @Suite("URL, middleware, and body edge cases", .serialized)
 struct RequestEdgeCaseTests {
-  private struct CapturedRequest: Sendable {
+  struct CapturedRequest: Sendable {
     let path: String?
     let baseURL: URL
     let operationID: String
   }
 
-  private final class Capture: @unchecked Sendable {
+  final class Capture: @unchecked Sendable {
     private let lock = NSLock()
     private var value: CapturedRequest?
 
@@ -515,7 +515,7 @@ struct RequestEdgeCaseTests {
     }
   }
 
-  private struct CapturingMiddleware: ClientMiddleware {
+  struct CapturingMiddleware: ClientMiddleware {
     let capture: Capture
 
     func intercept(
@@ -605,7 +605,7 @@ struct RequestEdgeCaseTests {
     )
 
     _ = try await client.sendRequestStreaming { builder in
-      builder.setURL("https://example.com/items")
+      try builder.setURL("https://example.com/items")
     }
 
     #expect(try #require(capture.take()).operationID == "client-default")
@@ -696,6 +696,213 @@ struct RequestEdgeCaseTests {
       url: #require(URL(string: "https://example.com/no-body"))
     )
     #expect(data == nil)
+  }
+}
+
+private struct UnitModel: Codable, Equatable {
+  let value: String
+}
+
+private enum UnitDecodeFailure: Error, Equatable {
+  case expected
+}
+
+private final class RequestRecorder: @unchecked Sendable {
+  private let lock = NSLock()
+  private var _request: URLRequest?
+
+  var request: URLRequest? {
+    lock.lock()
+    defer { lock.unlock() }
+    return _request
+  }
+
+  func record(_ request: URLRequest) {
+    lock.lock()
+    _request = request
+    lock.unlock()
+  }
+}
+
+private func makeRecordingJSONSession(
+  for url: URL,
+  statusCode: Int = 200,
+  body: Data? = Data(#"{"value":"ok"}"#.utf8),
+  recorder: RequestRecorder = .init()
+) -> (URLSession, RequestRecorder) {
+  let session = makeMockSessionWithHandler(for: url) { request in
+    recorder.record(request)
+    return (
+      HTTPURLResponse(
+        url: try #require(request.url),
+        statusCode: statusCode,
+        httpVersion: nil,
+        headerFields: ["Content-Type": "application/json"]
+      )!,
+      body
+    )
+  }
+  return (session, recorder)
+}
+
+@Suite("Deterministic decoding contracts", .serialized)
+struct DecodingContractTests {
+  private let url = URL(string: "https://example.com/unit-decode")!
+
+  @Test("Decodable request uses JSON Accept and decodes locally")
+  func decodableRequest() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let value: UnitModel = try await OpenAPIDynamic(session: session).sendRequest(
+      method: .get, url: url)
+
+    #expect(value == UnitModel(value: "ok"))
+    #expect(recorder.request?.value(forHTTPHeaderField: "Accept") == "application/json")
+  }
+
+  @Test("Decodable request preserves explicit Accept override")
+  func decodableAcceptOverride() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    var headers: HTTPFields = [:]
+    headers[.accept] = "application/vnd.example+json"
+
+    let _: UnitModel = try await OpenAPIDynamic(session: session).sendRequest(
+      method: .get, url: url, headers: headers)
+
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Accept")
+        == "application/vnd.example+json")
+  }
+
+  @Test("Encodable builder uses JSON Content-Type and preserves override")
+  func encodableContentType() throws {
+    var builder = RequestBuilder()
+    try builder.setBody(UnitModel(value: "sent"))
+    #expect(builder.headers[.contentType] == "application/json")
+
+    builder.headers[.contentType] = "application/merge-patch+json"
+    try builder.setBody(UnitModel(value: "updated"))
+    #expect(builder.headers[.contentType] == "application/merge-patch+json")
+  }
+
+  @Test("Validated Decodable request validates then decodes")
+  func validatedDecodableRequest() async throws {
+    let (session, _) = makeRecordingJSONSession(for: url)
+    let value: UnitModel = try await OpenAPIDynamic(session: session).sendRequestAndValidate(
+      method: .get, url: url)
+    #expect(value == UnitModel(value: "ok"))
+  }
+
+  @Test("Decoded response body distinguishes absent from zero-byte body")
+  func decodedResponseBodyNilAndEmpty() async throws {
+    let nilClient = OpenAPIDynamic(
+      middleware: ShortCircuitMiddleware(status: .ok, body: nil))
+    let (_, nilValue): (HTTPResponse, UnitModel?) =
+      try await nilClient.sendRequestWithResponseBody(
+        method: .get, url: url)
+    #expect(nilValue == nil)
+
+    let (emptySession, _) = makeRecordingJSONSession(for: url, body: Data())
+    await #expect(throws: Swift.DecodingError.self) {
+      let _: (HTTPResponse, UnitModel?) =
+        try await OpenAPIDynamic(session: emptySession).sendRequestWithResponseBody(
+          method: .get, url: url)
+    }
+  }
+
+  @Test("Missing body throws canonical error to caller and observer")
+  func missingBodyIsObserved() async throws {
+    let recorder = DecodingFailureContextRecorder()
+    let client = OpenAPIDynamic(
+      middleware: [ShortCircuitMiddleware(status: .ok, body: nil)],
+      decodingFailureHandler: recorder.record
+    )
+
+    await #expect(throws: DecodingError.noData) {
+      let _: UnitModel = try await client.sendRequest(method: .get, url: url)
+    }
+    #expect(recorder.context?.error is DecodingError)
+    #expect(recorder.context?.responseBody == nil)
+  }
+
+  @Test("Validated missing body throws canonical error")
+  func validatedMissingBody() async throws {
+    let client = OpenAPIDynamic(
+      middleware: ShortCircuitMiddleware(status: .ok, body: nil))
+    await #expect(throws: DecodingError.noData) {
+      let _: UnitModel = try await client.sendRequestAndValidate(method: .get, url: url)
+    }
+  }
+
+  @Test("Status decoder uses the local response")
+  func statusDecoding() async throws {
+    let (session, _) = makeRecordingJSONSession(for: url, statusCode: 201)
+    let value = try await OpenAPIDynamic(session: session).sendRequestWithStatusDecoding(
+      method: .get,
+      url: url,
+      decoders: [.created: { try decode(UnitModel.self, from: $0) }]
+    )
+    #expect(value == UnitModel(value: "ok"))
+  }
+
+  @Test("Type decoder uses the local response")
+  func typeDecoding() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let decoded = try await OpenAPIDynamic(session: session).sendRequestWithTypeDecoding(
+      method: .get,
+      url: url,
+      typeMap: [200: UnitModel.self]
+    )
+    #expect(decoded as? UnitModel == UnitModel(value: "ok"))
+    #expect(recorder.request?.value(forHTTPHeaderField: "Accept") == "application/json")
+  }
+
+  @Test("Flexible decoder receives response and body")
+  func flexibleDecoding() async throws {
+    let (session, _) = makeRecordingJSONSession(for: url, statusCode: 202)
+    let value = try await OpenAPIDynamic(session: session).sendRequestWithFlexibleDecoding(
+      method: .get, url: url
+    ) { response, body in
+      #expect(response.status == .accepted)
+      return try decode(UnitModel.self, from: body)
+    }
+    #expect(value == UnitModel(value: "ok"))
+  }
+}
+
+@Suite("Fail-closed request builder", .serialized)
+struct RequestBuilderFailureTests {
+  @Test("Invalid URL string never reaches middleware or transport")
+  func invalidURLString() async throws {
+    let capture = RequestEdgeCaseTests.Capture()
+    let client = OpenAPIDynamic(
+      middleware: RequestEdgeCaseTests.CapturingMiddleware(capture: capture))
+
+    await #expect(throws: InvalidRequestURLStringError(value: "not a URL")) {
+      _ = try await client.sendRequestStreaming { builder in
+        try builder.setURL("not a URL")
+      }
+    }
+    #expect(capture.take() == nil)
+  }
+
+  @Test("Omitted URL never reaches middleware or example.com")
+  func omittedURL() async throws {
+    let capture = RequestEdgeCaseTests.Capture()
+    let client = OpenAPIDynamic(
+      middleware: RequestEdgeCaseTests.CapturingMiddleware(capture: capture))
+
+    await #expect(throws: InvalidRequestURLError(url: URL(string: "about:blank")!)) {
+      _ = try await client.sendRequestStreaming { _ in }
+    }
+    #expect(capture.take() == nil)
+  }
+
+  @Test("Query composition fails when the builder has no request URL")
+  func queryWithoutURL() throws {
+    var builder = RequestBuilder()
+    #expect(throws: InvalidRequestURLError(url: URL(string: "about:blank")!)) {
+      try builder.setQuery(["q": "value"])
+    }
   }
 }
 
