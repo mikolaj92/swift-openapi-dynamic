@@ -53,7 +53,7 @@ extension OpenAPIDynamic {
     if requestBuilder.headers[.accept] == nil {
       requestBuilder.headers[.accept] = "application/json"
     }
-    let metadata = DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
+    let metadata = try DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
     let (response, data) = try await sendRequestWithResponseBody {
       $0.method = requestBuilder.method
       $0.url = requestBuilder.url
@@ -119,7 +119,7 @@ extension OpenAPIDynamic {
     if requestBuilder.headers[.accept] == nil {
       requestBuilder.headers[.accept] = "application/json"
     }
-    let metadata = DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
+    let metadata = try DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
     let (response, data) = try await sendRequestWithResponseBody {
       $0.method = requestBuilder.method
       $0.url = requestBuilder.url
@@ -188,7 +188,7 @@ extension OpenAPIDynamic {
     if requestBuilder.headers[.accept] == nil {
       requestBuilder.headers[.accept] = "application/json"
     }
-    let metadata = DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
+    let metadata = try DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
     let (response, data) = try await sendRequestWithResponseBody {
       $0.method = requestBuilder.method
       $0.url = requestBuilder.url
@@ -252,7 +252,7 @@ extension OpenAPIDynamic {
   ) async throws -> T {
     var requestBuilder = RequestBuilder()
     try builder(&requestBuilder)
-    let metadata = DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
+    let metadata = try DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
     let (response, data) = try await sendRequestWithResponseBody {
       $0.method = requestBuilder.method
       $0.url = requestBuilder.url
@@ -327,7 +327,7 @@ extension OpenAPIDynamic {
     if requestBuilder.headers[.accept] == nil {
       requestBuilder.headers[.accept] = "application/json"
     }
-    let metadata = DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
+    let metadata = try DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
     let (response, data) = try await sendRequestWithResponseBody {
       $0.method = requestBuilder.method
       $0.url = requestBuilder.url
@@ -388,7 +388,7 @@ extension OpenAPIDynamic {
   ) async throws -> T {
     var requestBuilder = RequestBuilder()
     try builder(&requestBuilder)
-    let metadata = DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
+    let metadata = try DecodingMetadata(requestBuilder, defaultOperationID: defaultOperationID)
     let (response, data) = try await sendRequestWithResponseBody {
       $0.method = requestBuilder.method
       $0.url = requestBuilder.url

@@ -73,10 +73,10 @@ public final class OpenAPIDynamic: Sendable {
       self.operationID = operationID
     }
 
-    init(_ builder: RequestBuilder, defaultOperationID: String) {
+    init(_ builder: RequestBuilder, defaultOperationID: String) throws {
       self.init(
         method: builder.method,
-        url: builder.url,
+        url: try builder.requireURL(),
         operationID: builder.operationID ?? defaultOperationID
       )
     }
@@ -303,7 +303,7 @@ public final class OpenAPIDynamic: Sendable {
     try builder(&requestBuilder)
     return try await sendRequestStreaming(
       method: requestBuilder.method,
-      url: requestBuilder.url,
+      url: try requestBuilder.requireURL(),
       headers: requestBuilder.headers,
       body: requestBuilder.body,
       operationID: requestBuilder.operationID

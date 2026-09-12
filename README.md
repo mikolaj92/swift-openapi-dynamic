@@ -115,7 +115,7 @@ let response = try await client.sendRequest(
 
 ### Using the Request Builder
 
-For more complex requests, use the fluent request builder. String URLs and query composition are throwing operations: invalid or missing absolute HTTP(S) destinations fail before middleware or transport runs.
+For more complex requests, use the fluent request builder. `RequestBuilder` has no default destination: `url` starts as `nil`. String URLs and query composition are throwing operations, and a missing destination throws `MissingRequestURLError` before middleware or transport runs.
 
 ```swift
 let (response, bodyData) = try await client.sendRequestWithResponseBody { builder in

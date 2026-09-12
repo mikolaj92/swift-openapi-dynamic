@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- `RequestBuilder` now rejects invalid, missing, and uncomposable URLs before middleware or transport; string URL and query setters are throwing APIs.
+- `RequestBuilder` now rejects invalid, missing, and uncomposable URLs before middleware or transport; `url` starts as `nil`, string URL and query setters are throwing APIs, and a missing destination throws `MissingRequestURLError`.
 - Required decoded responses now report `DecodingError.noData` consistently for an absent body, including through `decodingFailureHandler`.
 - `HTTPError` equality now includes the full HTTP response and preserved body.
 - Updated issue templates to show the current `OpenAPIDynamic(middleware:)` and `sendRequest` API.
