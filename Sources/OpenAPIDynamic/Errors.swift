@@ -12,6 +12,13 @@ public struct InvalidRequestURLStringError: Error, LocalizedError, Equatable {
   }
 }
 
+/// A request was sent without a destination URL.
+public struct MissingRequestURLError: Error, LocalizedError, Equatable {
+  public var errorDescription: String? {
+    "Request is missing an absolute HTTP URL"
+  }
+}
+
 /// The supplied request URL cannot be represented as an absolute HTTP request.
 public struct InvalidRequestURLError: Error, LocalizedError, Equatable {
   public let url: URL

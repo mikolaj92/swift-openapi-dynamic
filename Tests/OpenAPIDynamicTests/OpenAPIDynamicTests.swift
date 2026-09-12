@@ -20,9 +20,25 @@ import Testing
   builder.setBody("{\"name\":\"test\"}".data(using: .utf8))
 
   #expect(builder.method == .post)
-  #expect(builder.url.absoluteString == "https://api.example.com/users?limit=10")
+  #expect(builder.url?.absoluteString == "https://api.example.com/users?limit=10")
   #expect(builder.headers[.contentType] == "application/json")
   #expect(builder.body == "{\"name\":\"test\"}".data(using: .utf8))
+}
+
+@Test func testRequestBuilderQuery() throws {
+  var builder = RequestBuilder()
+  try builder.setURL("https://api.example.com/users")
+  try builder.setQuery(["limit": "10", "q": "a b"])
+
+  var expected = URLComponents()
+  expected.scheme = "https"
+  expected.host = "api.example.com"
+  expected.path = "/users"
+  expected.queryItems = [
+    URLQueryItem(name: "limit", value: "10"),
+    URLQueryItem(name: "q", value: "a b"),
+  ]
+  #expect(builder.url == expected.url)
 }
 
 @Test func testHTTPError() async throws {
@@ -871,15 +887,24 @@ struct DecodingContractTests {
 
 @Suite("Fail-closed request builder", .serialized)
 struct RequestBuilderFailureTests {
-  @Test("Invalid URL string never reaches middleware or transport")
-  func invalidURLString() async throws {
+  @Test(
+    "Invalid URL string never reaches middleware or transport",
+    arguments: ["not a URL", "", "/relative/path", "ftp://files.example.com", "https://"]
+  )
+  func invalidURLString(_ value: String) async throws {
     let capture = RequestEdgeCaseTests.Capture()
     let client = OpenAPIDynamic(
       middleware: RequestEdgeCaseTests.CapturingMiddleware(capture: capture))
 
-    await #expect(throws: InvalidRequestURLStringError(value: "not a URL")) {
+    var builder = RequestBuilder()
+    #expect(throws: InvalidRequestURLStringError(value: value)) {
+      try builder.setURL(value)
+    }
+    #expect(builder.url == nil)
+
+    await #expect(throws: InvalidRequestURLStringError(value: value)) {
       _ = try await client.sendRequestStreaming { builder in
-        try builder.setURL("not a URL")
+        try builder.setURL(value)
       }
     }
     #expect(capture.take() == nil)
@@ -891,7 +916,8 @@ struct RequestBuilderFailureTests {
     let client = OpenAPIDynamic(
       middleware: RequestEdgeCaseTests.CapturingMiddleware(capture: capture))
 
-    await #expect(throws: InvalidRequestURLError(url: URL(string: "about:blank")!)) {
+    #expect(RequestBuilder().url == nil)
+    await #expect(throws: MissingRequestURLError()) {
       _ = try await client.sendRequestStreaming { _ in }
     }
     #expect(capture.take() == nil)
@@ -900,9 +926,21 @@ struct RequestBuilderFailureTests {
   @Test("Query composition fails when the builder has no request URL")
   func queryWithoutURL() throws {
     var builder = RequestBuilder()
-    #expect(throws: InvalidRequestURLError(url: URL(string: "about:blank")!)) {
+    #expect(throws: MissingRequestURLError()) {
       try builder.setQuery(["q": "value"])
     }
+    #expect(builder.url == nil)
+  }
+
+  @Test("Query composition fails for a URL that cannot be decomposed")
+  func queryWithUncomposableURL() throws {
+    let url = try #require(URL(string: "/relative/path"))
+    var builder = RequestBuilder()
+    builder.setURL(url)
+    #expect(throws: InvalidRequestURLError(url: url)) {
+      try builder.setQuery(["q": "value"])
+    }
+    #expect(builder.url == url)
   }
 }
 

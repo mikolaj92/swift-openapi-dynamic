@@ -9,7 +9,9 @@ public struct RequestBuilder {
   public var method: HTTPRequest.Method = .get
 
   /// The URL for the request.
-  public var url: URL
+  ///
+  /// `nil` until `setURL` succeeds or `url` is assigned explicitly.
+  public var url: URL?
 
   /// Headers to include in the request.
   public var headers: HTTPFields = [:]
@@ -23,9 +25,7 @@ public struct RequestBuilder {
   /// Creates a new request builder without a destination URL.
   ///
   /// A request cannot be sent until `setURL` succeeds or `url` is assigned explicitly.
-  public init() {
-    self.url = URL(string: "about:blank")!
-  }
+  public init() {}
 
   /// Sets the HTTP method.
   /// - Parameter method: The HTTP method.
@@ -66,9 +66,11 @@ public struct RequestBuilder {
   /// Adds query parameters to the URL.
   /// - Parameter parameters: The query parameters.
   /// - Returns: The builder for chaining.
+  /// - Throws: `MissingRequestURLError` when no destination URL has been set.
   /// - Throws: `InvalidRequestURLError` when the current URL cannot be composed safely.
   @discardableResult
   public mutating func setQuery(_ parameters: [String: String]) throws -> Self {
+    let url = try requireURL()
     guard
       var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
       components.scheme?.lowercased() == "http" || components.scheme?.lowercased() == "https",
@@ -85,6 +87,14 @@ public struct RequestBuilder {
     }
     self.url = newURL
     return self
+  }
+
+  /// Returns the destination URL, or throws if the builder has none.
+  public func requireURL() throws -> URL {
+    guard let url else {
+      throw MissingRequestURLError()
+    }
+    return url
   }
 
   /// Adds a header to the request.
