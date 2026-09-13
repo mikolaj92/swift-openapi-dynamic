@@ -7,6 +7,10 @@ import OpenAPIURLSession
 
 extension OpenAPIDynamic {
   /// Performs an HTTP request and decodes the response body to the specified type.
+  ///
+  /// An absent collected body (`nil`) throws ``DecodingError/noData``. A present zero-byte body
+  /// is passed to `decoder` and typically throws `Swift.DecodingError`. `decodingFailureHandler`
+  /// receives the same error that is rethrown to the caller.
   /// - Parameters:
   ///   - method: The HTTP method.
   ///   - url: The URL for the request.
@@ -14,7 +18,8 @@ extension OpenAPIDynamic {
   ///   - body: The request body data.
   ///   - decoder: The JSON decoder to use.
   /// - Returns: The decoded response body.
-  /// - Throws: Any error that occurs during the request, or decoding errors.
+  /// - Throws: ``DecodingError/noData`` if the response body is absent, `Swift.DecodingError` for
+  ///   a present body that cannot be decoded, or any request error.
   public func sendRequest<T: Decodable>(
     method: HTTPRequest.Method,
     url: URL,
@@ -39,11 +44,16 @@ extension OpenAPIDynamic {
   }
 
   /// Performs an HTTP request with a builder and decodes the response body to the specified type.
+  ///
+  /// An absent collected body (`nil`) throws ``DecodingError/noData``. A present zero-byte body
+  /// is passed to `decoder` and typically throws `Swift.DecodingError`. `decodingFailureHandler`
+  /// receives the same error that is rethrown to the caller.
   /// - Parameters:
   ///   - builder: A closure that configures the request.
   ///   - decoder: The JSON decoder to use.
   /// - Returns: The decoded response body.
-  /// - Throws: Any error that occurs during the request, or decoding errors.
+  /// - Throws: ``DecodingError/noData`` if the response body is absent, `Swift.DecodingError` for
+  ///   a present body that cannot be decoded, or any request error.
   public func sendRequest<T: Decodable>(
     _ builder: (inout RequestBuilder) throws -> Void,
     decoder: JSONDecoder = .init()
@@ -72,6 +82,10 @@ extension OpenAPIDynamic {
   }
 
   /// Performs an HTTP request, validates success, and decodes the response body to the specified type.
+  ///
+  /// After a successful status, an absent collected body (`nil`) throws ``DecodingError/noData``.
+  /// A present zero-byte body is passed to `decoder` and typically throws `Swift.DecodingError`.
+  /// `decodingFailureHandler` receives the same error that is rethrown to the caller.
   /// - Parameters:
   ///   - method: The HTTP method.
   ///   - url: The URL for the request.
@@ -79,7 +93,9 @@ extension OpenAPIDynamic {
   ///   - body: The request body data.
   ///   - decoder: The JSON decoder to use.
   /// - Returns: The decoded response body.
-  /// - Throws: `HTTPError` if the response status is not successful, or any other request/decoding error.
+  /// - Throws: `HTTPError` if the response status is not successful, ``DecodingError/noData`` if
+  ///   the body is absent, `Swift.DecodingError` for a present body that cannot be decoded, or any
+  ///   other request error.
   public func sendRequestAndValidate<T: Decodable>(
     method: HTTPRequest.Method,
     url: URL,
@@ -105,11 +121,17 @@ extension OpenAPIDynamic {
   }
 
   /// Performs an HTTP request with a builder, validates success, and decodes the response body to the specified type.
+  ///
+  /// After a successful status, an absent collected body (`nil`) throws ``DecodingError/noData``.
+  /// A present zero-byte body is passed to `decoder` and typically throws `Swift.DecodingError`.
+  /// `decodingFailureHandler` receives the same error that is rethrown to the caller.
   /// - Parameters:
   ///   - builder: A closure that configures the request.
   ///   - decoder: The JSON decoder to use.
   /// - Returns: The decoded response body.
-  /// - Throws: `HTTPError` if the response status is not successful, or any other request/decoding error.
+  /// - Throws: `HTTPError` if the response status is not successful, ``DecodingError/noData`` if
+  ///   the body is absent, `Swift.DecodingError` for a present body that cannot be decoded, or any
+  ///   other request error.
   public func sendRequestAndValidate<T: Decodable>(
     _ builder: (inout RequestBuilder) throws -> Void,
     decoder: JSONDecoder = .init()
@@ -139,14 +161,21 @@ extension OpenAPIDynamic {
   }
 
   /// Performs an HTTP request and returns the response with the decoded body.
+  ///
+  /// Distinguishes an absent body from a present zero-byte body. A `nil` collected body returns
+  /// `(response, nil)` without throwing and without invoking `decodingFailureHandler`. A present
+  /// empty `Data()` is decoded and typically throws `Swift.DecodingError`; that error is forwarded
+  /// to `decodingFailureHandler` and rethrown. `URLSession` maps a no-payload HTTP response to
+  /// empty `Data()`, so this overload returns `nil` only when middleware or the transport returned
+  /// no body.
   /// - Parameters:
   ///   - method: The HTTP method.
   ///   - url: The URL for the request.
   ///   - headers: Additional headers to include.
   ///   - body: The request body data.
   ///   - decoder: The JSON decoder to use.
-  /// - Returns: A tuple containing the HTTP response and optional decoded body.
-  /// - Throws: Any error that occurs during the request, or decoding errors.
+  /// - Returns: The HTTP response and the decoded body, or `nil` when no body was collected.
+  /// - Throws: `Swift.DecodingError` for a present body that cannot be decoded, or any request error.
   public func sendRequestWithResponseBody<T: Decodable>(
     method: HTTPRequest.Method,
     url: URL,
@@ -174,11 +203,18 @@ extension OpenAPIDynamic {
   }
 
   /// Performs an HTTP request with a builder and returns the response with the decoded body.
+  ///
+  /// Distinguishes an absent body from a present zero-byte body. A `nil` collected body returns
+  /// `(response, nil)` without throwing and without invoking `decodingFailureHandler`. A present
+  /// empty `Data()` is decoded and typically throws `Swift.DecodingError`; that error is forwarded
+  /// to `decodingFailureHandler` and rethrown. `URLSession` maps a no-payload HTTP response to
+  /// empty `Data()`, so this overload returns `nil` only when middleware or the transport returned
+  /// no body.
   /// - Parameters:
   ///   - builder: A closure that configures the request.
   ///   - decoder: The JSON decoder to use.
-  /// - Returns: A tuple containing the HTTP response and optional decoded body.
-  /// - Throws: Any error that occurs during the request, or decoding errors.
+  /// - Returns: The HTTP response and the decoded body, or `nil` when no body was collected.
+  /// - Throws: `Swift.DecodingError` for a present body that cannot be decoded, or any request error.
   public func sendRequestWithResponseBody<T: Decodable>(
     _ builder: (inout RequestBuilder) throws -> Void,
     decoder: JSONDecoder = .init()

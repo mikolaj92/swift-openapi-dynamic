@@ -53,8 +53,12 @@ public enum HTTPError: Error, LocalizedError, Equatable {
 }
 
 /// Errors that can occur during decoding.
-public enum DecodingError: Error, LocalizedError {
+public enum DecodingError: Error, LocalizedError, Equatable {
   /// No data was available to decode.
+  ///
+  /// Thrown when a required decoded value is requested and the collected response body is `nil`.
+  /// A present zero-byte body is not this error: it is passed to `JSONDecoder` and typically
+  /// surfaces as `Swift.DecodingError`.
   case noData
 
   /// A description of the error.
@@ -81,6 +85,9 @@ public enum UnexpectedStatusError: Error, LocalizedError {
 }
 
 /// Helper function for safe decoding of response data.
+///
+/// - Throws: ``DecodingError/noData`` when `data` is `nil`. A present empty `Data()` is decoded
+///   and typically throws `Swift.DecodingError`.
 public func decode<T: Decodable>(
   _ type: T.Type,
   from data: Data?,

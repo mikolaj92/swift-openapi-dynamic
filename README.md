@@ -166,7 +166,7 @@ The library provides powerful Codable decoding capabilities for type-safe JSON h
 
 ### Basic Decoding
 
-All decoding overloads distinguish an absent response body from a present zero-byte body. APIs that require a decoded value throw `OpenAPIDynamic.DecodingError.noData` for an absent body; a present empty body is passed to the decoder and normally produces `Swift.DecodingError`. The optional `sendRequestWithResponseBody<T>` overload returns `nil` only when the transport or middleware returned no body.
+All decoding overloads distinguish an absent response body (`nil`) from a present zero-byte body (`Data()`). `sendRequest<T>` and `sendRequestAndValidate<T>` throw `OpenAPIDynamic.DecodingError.noData` for `nil`; a present empty body is passed to the decoder and normally produces `Swift.DecodingError`. `decodingFailureHandler` receives the same error that is rethrown to the caller. The optional `sendRequestWithResponseBody<T>` overload returns `(response, nil)` without throwing when the collected body is `nil`, and decodes a present empty `Data()`. `URLSession` maps a no-payload HTTP response to empty `Data()`, so that overload returns `nil` only when middleware or the transport returned no body.
 
 ```swift
 // Decode response to a specific type (automatically sets Accept: application/json)
@@ -175,8 +175,9 @@ let user: User = try await client.sendRequest(method: .get, url: userURL)
 // Decode with success validation (automatically sets Accept: application/json)
 let user: User = try await client.sendRequestAndValidate(method: .get, url: userURL)
 
-// Get both response and decoded body (automatically sets Accept: application/json)
-let (response, user): (HTTPResponse, User) = try await client.sendRequestWithResponseBody(method: .get, url: userURL)
+// Get both response and optional decoded body (automatically sets Accept: application/json).
+// `user` is `nil` only when the collected body is absent; empty `Data()` is decoded.
+let (response, user): (HTTPResponse, User?) = try await client.sendRequestWithResponseBody(method: .get, url: userURL)
 ```
 
 ### Status-Specific Decoding
@@ -308,7 +309,7 @@ Transport and middleware failures are wrapped in the OpenAPIRuntime `ClientError
 ### Error Types
 
 - `HTTPError.statusError`: HTTP errors with optional response body
-- `DecodingError.noData`: Missing response data during decoding
+- `DecodingError.noData`: Missing (`nil`) response data during required decoding. A present empty body is not this error.
 - `UnexpectedStatusError.unexpectedStatus`: Unmapped HTTP status codes
 - `ClientError`: Transport or middleware failures with generated-client-compatible context
 
