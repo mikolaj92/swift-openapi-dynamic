@@ -84,6 +84,10 @@ import Testing
   #expect(throws: DecodingError.noData) {
     try decode(TestModel.self, from: nil)
   }
+
+  #expect(throws: Swift.DecodingError.self) {
+    try decode(TestModel.self, from: Data())
+  }
 }
 
 @Test func testDecodingFailureHandlerReceivesRequestAndResponseContext() async throws {
@@ -740,6 +744,35 @@ private final class RequestRecorder: @unchecked Sendable {
   }
 }
 
+private func thrownError(
+  _ body: () async throws -> Void,
+  sourceLocation: SourceLocation = #_sourceLocation
+) async -> any Error {
+  do {
+    try await body()
+    Issue.record("Expected an error", sourceLocation: sourceLocation)
+    struct DidNotThrow: Error {}
+    return DidNotThrow()
+  } catch {
+    return error
+  }
+}
+
+private func expectSameError(
+  _ lhs: any Error,
+  _ rhs: any Error,
+  sourceLocation: SourceLocation = #_sourceLocation
+) {
+  #expect(
+    String(describing: type(of: lhs)) == String(describing: type(of: rhs)),
+    sourceLocation: sourceLocation
+  )
+  #expect(
+    String(describing: lhs) == String(describing: rhs),
+    sourceLocation: sourceLocation
+  )
+}
+
 private func makeRecordingJSONSession(
   for url: URL,
   statusCode: Int = 200,
@@ -810,12 +843,16 @@ struct DecodingContractTests {
 
   @Test("Decoded response body distinguishes absent from zero-byte body")
   func decodedResponseBodyNilAndEmpty() async throws {
-    let nilClient = OpenAPIDynamic(
-      middleware: ShortCircuitMiddleware(status: .ok, body: nil))
+    let recorder = DecodingFailureContextRecorder()
+    let observedNilClient = OpenAPIDynamic(
+      middleware: [ShortCircuitMiddleware(status: .ok, body: nil)],
+      decodingFailureHandler: recorder.record
+    )
     let (_, nilValue): (HTTPResponse, UnitModel?) =
-      try await nilClient.sendRequestWithResponseBody(
+      try await observedNilClient.sendRequestWithResponseBody(
         method: .get, url: url)
     #expect(nilValue == nil)
+    #expect(recorder.context == nil)
 
     let (emptySession, _) = makeRecordingJSONSession(for: url, body: Data())
     await #expect(throws: Swift.DecodingError.self) {
@@ -823,6 +860,73 @@ struct DecodingContractTests {
         try await OpenAPIDynamic(session: emptySession).sendRequestWithResponseBody(
           method: .get, url: url)
     }
+  }
+
+  @Test("MockURLProtocol nil body is empty Data after URLSession")
+  func mockURLProtocolNilBodyIsEmptyData() async throws {
+    let recorder = DecodingFailureContextRecorder()
+    let client = OpenAPIDynamic(
+      session: makeMockSession(body: nil, for: url),
+      decodingFailureHandler: recorder.record
+    )
+
+    let callerError = await thrownError {
+      let _: UnitModel = try await client.sendRequest(method: .get, url: url)
+    }
+    let context = try #require(recorder.context)
+    #expect(context.responseBody == Data())
+    #expect(callerError is Swift.DecodingError)
+    #expect(!(callerError is DecodingError))
+    expectSameError(callerError, context.error)
+
+    await #expect(throws: Swift.DecodingError.self) {
+      let _: (HTTPResponse, UnitModel?) =
+        try await OpenAPIDynamic(session: makeMockSession(body: nil, for: url))
+        .sendRequestWithResponseBody(method: .get, url: url)
+    }
+  }
+
+  @Test("MockURLProtocol zero-byte body fails JSON decoding with the same observer error")
+  func mockURLProtocolEmptyBodyFailsJSONDecoding() async throws {
+    let recorder = DecodingFailureContextRecorder()
+    let client = OpenAPIDynamic(
+      session: makeMockSession(body: Data(), for: url),
+      decodingFailureHandler: recorder.record
+    )
+
+    let callerError = await thrownError {
+      let _: UnitModel = try await client.sendRequest(method: .get, url: url)
+    }
+    let context = try #require(recorder.context)
+    #expect(context.responseBody == Data())
+    #expect(callerError is Swift.DecodingError)
+    expectSameError(callerError, context.error)
+
+    let optionalRecorder = DecodingFailureContextRecorder()
+    let optionalClient = OpenAPIDynamic(
+      session: makeMockSession(body: Data(), for: url),
+      decodingFailureHandler: optionalRecorder.record
+    )
+    let optionalError = await thrownError {
+      let _: (HTTPResponse, UnitModel?) =
+        try await optionalClient.sendRequestWithResponseBody(method: .get, url: url)
+    }
+    expectSameError(optionalError, try #require(optionalRecorder.context?.error))
+  }
+
+  @Test("Validated MockURLProtocol empty body fails JSON decoding")
+  func validatedMockURLProtocolEmptyBody() async throws {
+    let recorder = DecodingFailureContextRecorder()
+    let client = OpenAPIDynamic(
+      session: makeMockSession(body: Data(), for: url),
+      decodingFailureHandler: recorder.record
+    )
+
+    let callerError = await thrownError {
+      let _: UnitModel = try await client.sendRequestAndValidate(method: .get, url: url)
+    }
+    #expect(callerError is Swift.DecodingError)
+    expectSameError(callerError, try #require(recorder.context?.error))
   }
 
   @Test("Missing body throws canonical error to caller and observer")
@@ -833,20 +937,27 @@ struct DecodingContractTests {
       decodingFailureHandler: recorder.record
     )
 
-    await #expect(throws: DecodingError.noData) {
+    let callerError = await thrownError {
       let _: UnitModel = try await client.sendRequest(method: .get, url: url)
     }
-    #expect(recorder.context?.error is DecodingError)
+    #expect(callerError as? DecodingError == .noData)
+    #expect(recorder.context?.error as? DecodingError == .noData)
     #expect(recorder.context?.responseBody == nil)
+    expectSameError(callerError, try #require(recorder.context?.error))
   }
 
   @Test("Validated missing body throws canonical error")
   func validatedMissingBody() async throws {
+    let recorder = DecodingFailureContextRecorder()
     let client = OpenAPIDynamic(
-      middleware: ShortCircuitMiddleware(status: .ok, body: nil))
-    await #expect(throws: DecodingError.noData) {
+      middleware: [ShortCircuitMiddleware(status: .ok, body: nil)],
+      decodingFailureHandler: recorder.record
+    )
+    let callerError = await thrownError {
       let _: UnitModel = try await client.sendRequestAndValidate(method: .get, url: url)
     }
+    #expect(callerError as? DecodingError == .noData)
+    expectSameError(callerError, try #require(recorder.context?.error))
   }
 
   @Test("Status decoder uses the local response")

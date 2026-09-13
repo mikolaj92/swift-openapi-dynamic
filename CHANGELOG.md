@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the README build badge that pointed at the deleted `daily_test.yml` GitHub Actions workflow.
 
 ### Testing
+- Added `MockURLProtocol` coverage that separates a `nil` body from a present zero-byte body for required and optional decoding, including that `decodingFailureHandler` receives the same error as the caller.
 - Added deterministic local tests for every public decoding path, JSON header defaults and overrides, missing versus zero-byte bodies, and fail-closed builder behavior.
 - Added a pytest check that README does not advertise the deleted `daily_test.yml` workflow badge.
 
