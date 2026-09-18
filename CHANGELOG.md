@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Split the package implementation into focused builder, client, decoding, error, failure-observation, and middleware transport files without adding targets.
 - Declared immutable `OpenAPIDynamic` instances `Sendable` for use across Swift concurrency domains.
+- Documented that a `Sendable` `OpenAPIDynamic` instance can be stored in an actor or passed across isolation domains when shared middleware is safe for concurrent use.
 
 ## [1.2.0] - 2026-07-22
 
