@@ -794,6 +794,48 @@ private func makeRecordingJSONSession(
   return (session, recorder)
 }
 
+/// Captures auto-headers onto a `URLRequest` without sending a streamed upload through
+/// `MockURLProtocol`. `URLSessionTransport` uses `uploadTask(withStreamedRequest:)` for
+/// bodies, which does not complete against a data-only `URLProtocol`.
+private struct URLRequestCapturingMiddleware: ClientMiddleware {
+  let url: URL
+  let recorder: RequestRecorder
+  let status: HTTPResponse.Status
+  let responseBody: Data?
+
+  init(
+    url: URL,
+    recorder: RequestRecorder,
+    status: HTTPResponse.Status = .ok,
+    responseBody: Data? = Data(#"{"value":"ok"}"#.utf8)
+  ) {
+    self.url = url
+    self.recorder = recorder
+    self.status = status
+    self.responseBody = responseBody
+  }
+
+  func intercept(
+    _ request: HTTPRequest,
+    body: HTTPBody?,
+    baseURL: URL,
+    operationID: String,
+    next: @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+  ) async throws -> (HTTPResponse, HTTPBody?) {
+    var urlRequest = URLRequest(url: url)
+    urlRequest.httpMethod = request.method.rawValue
+    for field in request.headerFields {
+      urlRequest.setValue(field.value, forHTTPHeaderField: field.name.rawName)
+    }
+    recorder.record(urlRequest)
+    let response = HTTPResponse(status: status)
+    if let responseBody {
+      return (response, HTTPBody(responseBody))
+    }
+    return (response, nil)
+  }
+}
+
 @Suite("Deterministic decoding contracts", .serialized)
 struct DecodingContractTests {
   private let url = URL(string: "https://example.com/unit-decode")!
@@ -835,10 +877,210 @@ struct DecodingContractTests {
 
   @Test("Validated Decodable request validates then decodes")
   func validatedDecodableRequest() async throws {
-    let (session, _) = makeRecordingJSONSession(for: url)
+    let (session, recorder) = makeRecordingJSONSession(for: url)
     let value: UnitModel = try await OpenAPIDynamic(session: session).sendRequestAndValidate(
       method: .get, url: url)
     #expect(value == UnitModel(value: "ok"))
+    #expect(recorder.request?.value(forHTTPHeaderField: "Accept") == "application/json")
+  }
+
+  @Test("Validated Decodable request preserves explicit Accept override")
+  func validatedDecodableAcceptOverride() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    var headers: HTTPFields = [:]
+    headers[.accept] = "application/vnd.example+json"
+
+    let _: UnitModel = try await OpenAPIDynamic(session: session).sendRequestAndValidate(
+      method: .get, url: url, headers: headers)
+
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Accept")
+        == "application/vnd.example+json")
+  }
+
+  @Test("Decodable builder request uses JSON Accept and decodes locally")
+  func decodableBuilderRequest() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let value: UnitModel = try await OpenAPIDynamic(session: session).sendRequest { builder in
+      builder.setMethod(.get)
+      builder.setURL(url)
+    }
+    #expect(value == UnitModel(value: "ok"))
+    #expect(recorder.request?.value(forHTTPHeaderField: "Accept") == "application/json")
+  }
+
+  @Test("Decodable builder request preserves explicit Accept override")
+  func decodableBuilderAcceptOverride() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let _: UnitModel = try await OpenAPIDynamic(session: session).sendRequest { builder in
+      builder.setMethod(.get)
+      builder.setURL(url)
+      builder.addHeader(.accept, "application/vnd.example+json")
+    }
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Accept")
+        == "application/vnd.example+json")
+  }
+
+  @Test("Validated Decodable builder request validates then decodes")
+  func validatedDecodableBuilderRequest() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let value: UnitModel = try await OpenAPIDynamic(session: session).sendRequestAndValidate {
+      builder in
+      builder.setMethod(.get)
+      builder.setURL(url)
+    }
+    #expect(value == UnitModel(value: "ok"))
+    #expect(recorder.request?.value(forHTTPHeaderField: "Accept") == "application/json")
+  }
+
+  @Test("Validated Decodable builder request preserves explicit Accept override")
+  func validatedDecodableBuilderAcceptOverride() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let _: UnitModel = try await OpenAPIDynamic(session: session).sendRequestAndValidate {
+      builder in
+      builder.setMethod(.get)
+      builder.setURL(url)
+      builder.addHeader(.accept, "application/vnd.example+json")
+    }
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Accept")
+        == "application/vnd.example+json")
+  }
+
+  @Test("Validated Decodable request throws HTTPError for non-success")
+  func validatedDecodableRequestFailure() async throws {
+    let (session, _) = makeRecordingJSONSession(for: url, statusCode: 404)
+    await #expect(throws: HTTPError.self) {
+      let _: UnitModel = try await OpenAPIDynamic(session: session).sendRequestAndValidate(
+        method: .get, url: url)
+    }
+  }
+
+  @Test("Decoded response body uses JSON Accept and preserves override")
+  func decodedResponseBodyAcceptHeader() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let (response, value): (HTTPResponse, UnitModel?) =
+      try await OpenAPIDynamic(session: session).sendRequestWithResponseBody(
+        method: .get, url: url)
+    #expect(response.status == .ok)
+    #expect(value == UnitModel(value: "ok"))
+    #expect(recorder.request?.value(forHTTPHeaderField: "Accept") == "application/json")
+
+    let overrideURL = URL(string: "https://example.com/unit-decode-override")!
+    let (overrideSession, overrideRecorder) = makeRecordingJSONSession(for: overrideURL)
+    var headers: HTTPFields = [:]
+    headers[.accept] = "application/vnd.example+json"
+    let _: (HTTPResponse, UnitModel?) =
+      try await OpenAPIDynamic(session: overrideSession).sendRequestWithResponseBody(
+        method: .get, url: overrideURL, headers: headers)
+    #expect(
+      overrideRecorder.request?.value(forHTTPHeaderField: "Accept")
+        == "application/vnd.example+json")
+  }
+
+  @Test("Decoded builder response body uses JSON Accept")
+  func decodedBuilderResponseBody() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let (response, value): (HTTPResponse, UnitModel?) =
+      try await OpenAPIDynamic(session: session).sendRequestWithResponseBody { builder in
+        builder.setMethod(.get)
+        builder.setURL(url)
+      }
+    #expect(response.status == .ok)
+    #expect(value == UnitModel(value: "ok"))
+    #expect(recorder.request?.value(forHTTPHeaderField: "Accept") == "application/json")
+  }
+
+  @Test("Decoded builder response body preserves explicit Accept override")
+  func decodedBuilderResponseBodyAcceptOverride() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let _: (HTTPResponse, UnitModel?) =
+      try await OpenAPIDynamic(session: session).sendRequestWithResponseBody { builder in
+        builder.setMethod(.get)
+        builder.setURL(url)
+        builder.addHeader(.accept, "application/vnd.example+json")
+      }
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Accept")
+        == "application/vnd.example+json")
+  }
+
+  @Test("Raw response body request does not force JSON Accept")
+  func rawResponseBodyDoesNotSetAccept() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let (response, data) =
+      try await OpenAPIDynamic(session: session).sendRequestWithResponseBody(
+        method: .get, url: url)
+    #expect(response.status == .ok)
+    #expect(data == Data(#"{"value":"ok"}"#.utf8))
+    #expect(recorder.request?.value(forHTTPHeaderField: "Accept") != "application/json")
+  }
+
+  @Test("Encodable request auto-sets JSON Content-Type on URLRequest")
+  func encodableRequestContentType() async throws {
+    let recorder = RequestRecorder()
+    let client = OpenAPIDynamic(
+      middleware: [URLRequestCapturingMiddleware(url: url, recorder: recorder)]
+    )
+    _ = try await client.sendRequest(method: .post, url: url, body: UnitModel(value: "sent"))
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+  }
+
+  @Test("Encodable request preserves explicit Content-Type override")
+  func encodableRequestContentTypeOverride() async throws {
+    let recorder = RequestRecorder()
+    var headers: HTTPFields = [:]
+    headers[.contentType] = "application/merge-patch+json"
+    let client = OpenAPIDynamic(
+      middleware: [URLRequestCapturingMiddleware(url: url, recorder: recorder)]
+    )
+    _ = try await client.sendRequest(
+      method: .post, url: url, headers: headers, body: UnitModel(value: "sent"))
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Content-Type")
+        == "application/merge-patch+json")
+  }
+
+  @Test("Encodable response-body request auto-sets JSON Content-Type on URLRequest")
+  func encodableResponseBodyContentType() async throws {
+    let recorder = RequestRecorder()
+    let client = OpenAPIDynamic(
+      middleware: [URLRequestCapturingMiddleware(url: url, recorder: recorder)]
+    )
+    _ = try await client.sendRequestWithResponseBody(
+      method: .post, url: url, body: UnitModel(value: "sent"))
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+  }
+
+  @Test("Encodable validated request auto-sets JSON Content-Type on URLRequest")
+  func encodableValidatedContentType() async throws {
+    let recorder = RequestRecorder()
+    let client = OpenAPIDynamic(
+      middleware: [URLRequestCapturingMiddleware(url: url, recorder: recorder)]
+    )
+    _ = try await client.sendRequestAndValidate(
+      method: .post, url: url, body: UnitModel(value: "sent"))
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+  }
+
+  @Test("Encodable builder request auto-sets JSON Content-Type on URLRequest")
+  func encodableBuilderRequestContentType() async throws {
+    let recorder = RequestRecorder()
+    let client = OpenAPIDynamic(
+      middleware: [URLRequestCapturingMiddleware(url: url, recorder: recorder)]
+    )
+    let (response, _) = try await client.sendRequestWithResponseBody { builder in
+      builder.setMethod(.post)
+      builder.setURL(url)
+      try builder.setBody(UnitModel(value: "sent"))
+    }
+    #expect(response.status == .ok)
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
   }
 
   @Test("Decoded response body distinguishes absent from zero-byte body")
@@ -966,9 +1208,41 @@ struct DecodingContractTests {
     let value = try await OpenAPIDynamic(session: session).sendRequestWithStatusDecoding(
       method: .get,
       url: url,
+      decoders: [
+        .created: { try decode(UnitModel.self, from: $0) },
+        .notFound: { _ in UnitModel(value: "missing") },
+      ]
+    )
+    #expect(value == UnitModel(value: "ok"))
+  }
+
+  @Test("Status decoder builder uses the local response")
+  func statusDecodingBuilder() async throws {
+    let (session, _) = makeRecordingJSONSession(for: url, statusCode: 201)
+    let value = try await OpenAPIDynamic(session: session).sendRequestWithStatusDecoding(
+      {
+        builder in
+        builder.setMethod(.get)
+        builder.setURL(url)
+      },
       decoders: [.created: { try decode(UnitModel.self, from: $0) }]
     )
     #expect(value == UnitModel(value: "ok"))
+  }
+
+  @Test("Status decoder throws for an unmapped status")
+  func statusDecodingUnexpectedStatus() async throws {
+    let (session, _) = makeRecordingJSONSession(for: url, statusCode: 404)
+    do {
+      _ = try await OpenAPIDynamic(session: session).sendRequestWithStatusDecoding(
+        method: .get,
+        url: url,
+        decoders: [.ok: { try decode(UnitModel.self, from: $0) }]
+      )
+      Issue.record("Expected UnexpectedStatusError")
+    } catch let error as UnexpectedStatusError {
+      #expect(error.localizedDescription == "Unexpected HTTP status: 404")
+    }
   }
 
   @Test("Type decoder uses the local response")
@@ -983,11 +1257,90 @@ struct DecodingContractTests {
     #expect(recorder.request?.value(forHTTPHeaderField: "Accept") == "application/json")
   }
 
+  @Test("Type decoder preserves explicit Accept override")
+  func typeDecodingAcceptOverride() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    var headers: HTTPFields = [:]
+    headers[.accept] = "application/vnd.example+json"
+    _ = try await OpenAPIDynamic(session: session).sendRequestWithTypeDecoding(
+      method: .get,
+      url: url,
+      headers: headers,
+      typeMap: [200: UnitModel.self]
+    )
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Accept")
+        == "application/vnd.example+json")
+  }
+
+  @Test("Type decoder builder uses JSON Accept")
+  func typeDecodingBuilder() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let decoded = try await OpenAPIDynamic(session: session).sendRequestWithTypeDecoding(
+      {
+        builder in
+        builder.setMethod(.get)
+        builder.setURL(url)
+      },
+      typeMap: [200: UnitModel.self]
+    )
+    #expect(decoded as? UnitModel == UnitModel(value: "ok"))
+    #expect(recorder.request?.value(forHTTPHeaderField: "Accept") == "application/json")
+  }
+
+  @Test("Type decoder builder preserves explicit Accept override")
+  func typeDecodingBuilderAcceptOverride() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    _ = try await OpenAPIDynamic(session: session).sendRequestWithTypeDecoding(
+      {
+        builder in
+        builder.setMethod(.get)
+        builder.setURL(url)
+        builder.addHeader(.accept, "application/vnd.example+json")
+      },
+      typeMap: [200: UnitModel.self]
+    )
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Accept")
+        == "application/vnd.example+json")
+  }
+
+  @Test("Type decoder throws for an unmapped status")
+  func typeDecodingUnexpectedStatus() async throws {
+    let (session, _) = makeRecordingJSONSession(for: url, statusCode: 500)
+    do {
+      _ = try await OpenAPIDynamic(session: session).sendRequestWithTypeDecoding(
+        method: .get,
+        url: url,
+        typeMap: [200: UnitModel.self]
+      )
+      Issue.record("Expected UnexpectedStatusError")
+    } catch let error as UnexpectedStatusError {
+      #expect(error.localizedDescription == "Unexpected HTTP status: 500")
+    }
+  }
+
   @Test("Flexible decoder receives response and body")
   func flexibleDecoding() async throws {
     let (session, _) = makeRecordingJSONSession(for: url, statusCode: 202)
     let value = try await OpenAPIDynamic(session: session).sendRequestWithFlexibleDecoding(
       method: .get, url: url
+    ) { response, body in
+      #expect(response.status == .accepted)
+      return try decode(UnitModel.self, from: body)
+    }
+    #expect(value == UnitModel(value: "ok"))
+  }
+
+  @Test("Flexible decoder builder receives response and body")
+  func flexibleDecodingBuilder() async throws {
+    let (session, _) = makeRecordingJSONSession(for: url, statusCode: 202)
+    let value = try await OpenAPIDynamic(session: session).sendRequestWithFlexibleDecoding(
+      {
+        builder in
+        builder.setMethod(.get)
+        builder.setURL(url)
+      }
     ) { response, body in
       #expect(response.status == .accepted)
       return try decode(UnitModel.self, from: body)
