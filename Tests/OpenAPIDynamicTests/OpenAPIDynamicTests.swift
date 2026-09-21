@@ -47,6 +47,8 @@ import Testing
   let error = HTTPError.statusError(response, body: body)
 
   #expect(error.localizedDescription == "HTTP 400 Bad Request")
+  #expect(error == HTTPError.statusError(response, body: body))
+  #expect(error != HTTPError.statusError(response, body: Data("other".utf8)))
 }
 
 @Test func testResponseValidation() async throws {
@@ -1077,10 +1079,28 @@ func testHTTPErrorEqualityIncludesBody() {
   let first = HTTPError.statusError(response, body: Data("first".utf8))
   let same = HTTPError.statusError(response, body: Data("first".utf8))
   let different = HTTPError.statusError(response, body: Data("second".utf8))
+  let missing = HTTPError.statusError(response, body: nil)
+  let empty = HTTPError.statusError(response, body: Data())
 
   #expect(first == same)
   #expect(first != different)
+  #expect(missing != empty)
+  #expect(missing == HTTPError.statusError(response, body: nil))
   #expect(first.errorDescription == different.errorDescription)
+  #expect(missing.errorDescription == empty.errorDescription)
+}
+
+@Test("validateSuccess preserves body in HTTPError equality")
+func testValidateSuccessBodyParticipatesInEquality() {
+  let response = HTTPResponse(status: .badRequest)
+  let body = Data("payload".utf8)
+
+  #expect(throws: HTTPError.statusError(response, body: body)) {
+    try response.validateSuccess(with: body)
+  }
+  #expect(throws: HTTPError.statusError(response, body: nil)) {
+    try response.validateSuccess()
+  }
 }
 
 @Test("HTTPError equality includes response headers")
