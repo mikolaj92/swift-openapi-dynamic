@@ -1068,9 +1068,19 @@ private func makeMockSessionWithHandler(
 }
 
 @Test("OpenAPIDynamic satisfies Sendable")
-func testOpenAPIDynamicIsSendable() {
+func testOpenAPIDynamicIsSendable() async {
   func requireSendable<T: Sendable>(_: T) {}
-  requireSendable(OpenAPIDynamic())
+  let client = OpenAPIDynamic()
+  requireSendable(client)
+
+  actor ClientHolder {
+    let client: OpenAPIDynamic
+    init(_ client: OpenAPIDynamic) { self.client = client }
+    func session() -> URLSession { client.session }
+  }
+
+  let holder = ClientHolder(client)
+  #expect(await holder.session() === URLSession.shared)
 }
 
 @Test("HTTPError equality includes the preserved response body")
