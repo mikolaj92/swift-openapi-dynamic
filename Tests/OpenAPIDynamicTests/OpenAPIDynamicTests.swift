@@ -794,65 +794,6 @@ private func makeRecordingJSONSession(
   return (session, recorder)
 }
 
-private struct CapturedRequestHeaders: Sendable {
-  let accept: String?
-  let contentType: String?
-}
-
-private final class RequestHeaderRecorder: @unchecked Sendable {
-  private let lock = NSLock()
-  private var _headers: CapturedRequestHeaders?
-
-  var headers: CapturedRequestHeaders? {
-    lock.lock()
-    defer { lock.unlock() }
-    return _headers
-  }
-
-  func record(_ request: HTTPRequest) {
-    lock.lock()
-    _headers = CapturedRequestHeaders(
-      accept: request.headerFields[.accept],
-      contentType: request.headerFields[.contentType]
-    )
-    lock.unlock()
-  }
-}
-
-/// Captures the middleware-level HTTPRequest and short-circuits before URLSessionTransport.
-/// These tests cover header defaults and overrides before transport conversion; they do not claim
-/// to verify the URLRequest produced by URLSessionTransport for streamed uploads.
-private struct RequestHeaderCapturingMiddleware: ClientMiddleware {
-  let recorder: RequestHeaderRecorder
-  let status: HTTPResponse.Status
-  let responseBody: Data?
-
-  init(
-    recorder: RequestHeaderRecorder,
-    status: HTTPResponse.Status = .ok,
-    responseBody: Data? = Data(#"{"value":"ok"}"#.utf8)
-  ) {
-    self.recorder = recorder
-    self.status = status
-    self.responseBody = responseBody
-  }
-
-  func intercept(
-    _ request: HTTPRequest,
-    body: HTTPBody?,
-    baseURL: URL,
-    operationID: String,
-    next: @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
-  ) async throws -> (HTTPResponse, HTTPBody?) {
-    recorder.record(request)
-    let response = HTTPResponse(status: status)
-    if let responseBody {
-      return (response, HTTPBody(responseBody))
-    }
-    return (response, nil)
-  }
-}
-
 @Suite("Deterministic decoding contracts", .serialized)
 struct DecodingContractTests {
   private let url = URL(string: "https://example.com/unit-decode")!
@@ -1034,64 +975,69 @@ struct DecodingContractTests {
     #expect(recorder.request?.value(forHTTPHeaderField: "Accept") != "application/json")
   }
 
-  @Test("Encodable request auto-sets JSON Content-Type on the middleware request")
+  @Test("Encodable request auto-sets JSON Content-Type on the URLRequest")
   func encodableRequestContentType() async throws {
-    let recorder = RequestHeaderRecorder()
-    let client = OpenAPIDynamic(
-      middleware: [RequestHeaderCapturingMiddleware(recorder: recorder)]
-    )
-    _ = try await client.sendRequest(method: .post, url: url, body: UnitModel(value: "sent"))
-    #expect(recorder.headers?.contentType == "application/json")
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    _ = try await OpenAPIDynamic(session: session).sendRequest(
+      method: .post, url: url, body: UnitModel(value: "sent"))
+    #expect(recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
   }
 
-  @Test("Encodable request preserves explicit Content-Type override")
+  @Test("Encodable request preserves explicit Content-Type on the URLRequest")
   func encodableRequestContentTypeOverride() async throws {
-    let recorder = RequestHeaderRecorder()
+    let (session, recorder) = makeRecordingJSONSession(for: url)
     var headers: HTTPFields = [:]
     headers[.contentType] = "application/merge-patch+json"
-    let client = OpenAPIDynamic(
-      middleware: [RequestHeaderCapturingMiddleware(recorder: recorder)]
-    )
-    _ = try await client.sendRequest(
+    _ = try await OpenAPIDynamic(session: session).sendRequest(
       method: .post, url: url, headers: headers, body: UnitModel(value: "sent"))
-    #expect(recorder.headers?.contentType == "application/merge-patch+json")
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Content-Type")
+        == "application/merge-patch+json")
   }
 
-  @Test("Encodable response-body request auto-sets JSON Content-Type on middleware request")
+  @Test("Encodable response-body request auto-sets JSON Content-Type on the URLRequest")
   func encodableResponseBodyContentType() async throws {
-    let recorder = RequestHeaderRecorder()
-    let client = OpenAPIDynamic(
-      middleware: [RequestHeaderCapturingMiddleware(recorder: recorder)]
-    )
-    _ = try await client.sendRequestWithResponseBody(
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    _ = try await OpenAPIDynamic(session: session).sendRequestWithResponseBody(
       method: .post, url: url, body: UnitModel(value: "sent"))
-    #expect(recorder.headers?.contentType == "application/json")
+    #expect(recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
   }
 
-  @Test("Encodable validated request auto-sets JSON Content-Type on middleware request")
+  @Test("Encodable validated request auto-sets JSON Content-Type on the URLRequest")
   func encodableValidatedContentType() async throws {
-    let recorder = RequestHeaderRecorder()
-    let client = OpenAPIDynamic(
-      middleware: [RequestHeaderCapturingMiddleware(recorder: recorder)]
-    )
-    _ = try await client.sendRequestAndValidate(
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    _ = try await OpenAPIDynamic(session: session).sendRequestAndValidate(
       method: .post, url: url, body: UnitModel(value: "sent"))
-    #expect(recorder.headers?.contentType == "application/json")
+    #expect(recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
   }
 
-  @Test("Encodable builder request auto-sets JSON Content-Type on middleware request")
+  @Test("Encodable builder upload sets JSON Content-Type on the URLRequest")
   func encodableBuilderRequestContentType() async throws {
-    let recorder = RequestHeaderRecorder()
-    let client = OpenAPIDynamic(
-      middleware: [RequestHeaderCapturingMiddleware(recorder: recorder)]
-    )
-    let (response, _) = try await client.sendRequestWithResponseBody { builder in
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let (response, _) = try await OpenAPIDynamic(session: session).sendRequestWithResponseBody {
+      builder in
       builder.setMethod(.post)
       builder.setURL(url)
       try builder.setBody(UnitModel(value: "sent"))
     }
     #expect(response.status == .ok)
-    #expect(recorder.headers?.contentType == "application/json")
+    #expect(recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+  }
+
+  @Test("Encodable builder preserves explicit Content-Type on the URLRequest")
+  func encodableBuilderContentTypeOverride() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    let (response, _) = try await OpenAPIDynamic(session: session).sendRequestWithResponseBody {
+      builder in
+      builder.setMethod(.post)
+      builder.setURL(url)
+      builder.addHeader(.contentType, "application/merge-patch+json")
+      try builder.setBody(UnitModel(value: "sent"))
+    }
+    #expect(response.status == .ok)
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Content-Type")
+        == "application/merge-patch+json")
   }
 
   @Test("Decoded response body distinguishes absent from zero-byte body")
