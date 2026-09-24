@@ -773,6 +773,7 @@ private func expectSameError(
   )
 }
 
+/// Captures the exact URLRequest delivered to MockURLProtocol, after URLSessionTransport builds it.
 private func makeRecordingJSONSession(
   for url: URL,
   statusCode: Int = 200,
@@ -1021,6 +1022,8 @@ struct DecodingContractTests {
       try builder.setBody(UnitModel(value: "sent"))
     }
     #expect(response.status == .ok)
+    #expect(recorder.request?.url == url)
+    #expect(recorder.request?.httpMethod == "POST")
     #expect(recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
   }
 
