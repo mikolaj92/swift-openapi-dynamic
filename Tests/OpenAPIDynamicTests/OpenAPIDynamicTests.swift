@@ -1,5 +1,6 @@
 import Foundation
 import HTTPTypes
+import Network
 import OpenAPIRuntime
 import Testing
 
@@ -223,8 +224,8 @@ private final class MockURLProtocol: URLProtocol {
 
   /// URLSessionTransport sends bodies with uploadTask(withStreamedRequest:).
   /// That task reaches URLProtocol without copying headers onto a rebuilt request,
-  /// and waits for this callback before the upload can finish. Returning the stream
-  /// keeps startLoading's URLRequest — the one the transport built — observable.
+  /// and waits for this callback before the upload can finish. The bytes themselves
+  /// stay inside URLSession, so upload coverage uses the loopback listener below.
   func urlSession(
     _ session: URLSession,
     task: URLSessionTask,
@@ -1042,44 +1043,28 @@ struct DecodingContractTests {
     #expect(recorder.request?.httpMethod == "POST")
     #expect(recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
     if #available(macOS 12, iOS 15, tvOS 15, watchOS 8, *) {
-      #expect(recorder.request?.httpBodyStream != nil)
+      #expect(recorder.request?.httpBody == nil)
     } else {
       #expect(recorder.request?.httpBody == Data(#"{"value":"sent"}"#.utf8))
     }
   }
 
-  @Test("Streamed upload Content-Type is the URLRequest URLSessionTransport built")
+  @Test("Streamed upload bytes and Content-Type reach the listening socket")
   func streamedUploadContentTypeIsTransportURLRequest() async throws {
-    let recorder = RequestRecorder()
-    let session = makeMockSessionWithHandler(for: url) { request in
-      recorder.record(request)
-      return (
-        HTTPURLResponse(
-          url: try #require(request.url),
-          statusCode: 200,
-          httpVersion: nil,
-          headerFields: nil
-        )!,
-        Data()
-      )
-    }
-
-    let (response, _) = try await OpenAPIDynamic(session: session).sendRequestWithResponseBody {
-      builder in
+    let listener = try LoopbackHTTPListener()
+    let url = try listener.url(path: "/upload")
+    let (response, _) = try await OpenAPIDynamic().sendRequestWithResponseBody { builder in
       builder.setMethod(.post)
       builder.setURL(url)
       try builder.setBody(UnitModel(value: "sent"))
     }
+    let received = try await listener.received()
 
-    let captured = try #require(recorder.request)
     #expect(response.status == .ok)
-    #expect(captured.url == url)
-    #expect(captured.httpMethod == "POST")
-    #expect(captured.value(forHTTPHeaderField: "Content-Type") == "application/json")
-    if #available(macOS 12, iOS 15, tvOS 15, watchOS 8, *) {
-      #expect(captured.httpBody == nil)
-      #expect(captured.httpBodyStream != nil)
-    }
+    #expect(received.method == "POST")
+    #expect(received.path == "/upload")
+    #expect(received.header("Content-Type") == "application/json")
+    #expect(received.body == Data(#"{"value":"sent"}"#.utf8))
   }
 
   @Test("Middleware Content-Type mutation reaches the URLSession request")
@@ -1128,7 +1113,7 @@ struct DecodingContractTests {
       recorder.request?.value(forHTTPHeaderField: "Content-Type")
         == "application/merge-patch+json")
     if #available(macOS 12, iOS 15, tvOS 15, watchOS 8, *) {
-      #expect(recorder.request?.httpBodyStream != nil)
+      #expect(recorder.request?.httpBody == nil)
     } else {
       #expect(recorder.request?.httpBody == Data(#"{"value":"sent"}"#.utf8))
     }
@@ -1456,6 +1441,164 @@ struct RequestBuilderFailureTests {
       try builder.setQuery(["q": "value"])
     }
     #expect(builder.url == url)
+  }
+}
+
+/// Receives one HTTP/1.1 request on 127.0.0.1, including a streamed upload body.
+/// URLProtocol never observes that body: uploadTask(withStreamedRequest:) asks the
+/// task delegate for a stream and reads it inside URLSession.
+private final class LoopbackHTTPListener: @unchecked Sendable {
+  struct Received: Equatable {
+    let method: String
+    let path: String
+    let headers: [String: String]
+    let body: Data
+
+    func header(_ name: String) -> String? {
+      headers.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value
+    }
+  }
+
+  private let queue = DispatchQueue(label: "loopback-http-listener")
+  private var connection: NWConnection?
+  private var receivedRequest: Result<Received, any Error>?
+  private var receivedContinuation: CheckedContinuation<Received, any Error>?
+  private let listener: NWListener
+  private var port: UInt16 = 0
+
+  init() throws {
+    listener = try NWListener(using: .tcp, on: .any)
+    listener.newConnectionHandler = { [weak self] connection in
+      self?.accept(connection)
+    }
+    let ready = DispatchSemaphore(value: 0)
+    listener.stateUpdateHandler = { state in
+      if case .ready = state { ready.signal() }
+    }
+    listener.start(queue: queue)
+    if ready.wait(timeout: .now() + 2) == .timedOut {
+      struct ListenerTimeout: Error {}
+      throw ListenerTimeout()
+    }
+    guard let port = listener.port?.rawValue else {
+      struct MissingPort: Error {}
+      throw MissingPort()
+    }
+    self.port = port
+  }
+
+  func url(path: String) throws -> URL {
+    try #require(URL(string: "http://127.0.0.1:\(port)\(path)"))
+  }
+
+  func received() async throws -> Received {
+    try await withCheckedThrowingContinuation { continuation in
+      queue.async {
+        if let receivedRequest = self.receivedRequest {
+          continuation.resume(with: receivedRequest)
+        } else {
+          self.receivedContinuation = continuation
+        }
+      }
+    }
+  }
+
+  private func finish(_ result: Result<Received, any Error>) {
+    if let receivedContinuation {
+      receivedContinuation.resume(with: result)
+      self.receivedContinuation = nil
+    } else {
+      receivedRequest = result
+    }
+  }
+
+  private func accept(_ connection: NWConnection) {
+    self.connection = connection
+    connection.start(queue: queue)
+    receive(on: connection, buffer: Data())
+  }
+
+  private func receive(on connection: NWConnection, buffer: Data) {
+    connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) {
+      [weak self] data, _, isComplete, error in
+      guard let self else { return }
+      if let error {
+        self.finish(.failure(error))
+        return
+      }
+      var buffer = buffer
+      if let data { buffer.append(data) }
+      if let received = self.parse(buffer) {
+        let response = Data("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8)
+        connection.send(
+          content: response,
+          completion: .contentProcessed { _ in connection.cancel() }
+        )
+        self.finish(.success(received))
+        return
+      }
+      if isComplete {
+        struct IncompleteRequest: Error {}
+        self.finish(.failure(IncompleteRequest()))
+        return
+      }
+      self.receive(on: connection, buffer: buffer)
+    }
+  }
+
+  private func parse(_ buffer: Data) -> Received? {
+    let separator = Data("\r\n\r\n".utf8)
+    guard let headerEnd = buffer.range(of: separator) else { return nil }
+    let headerData = buffer.subdata(in: buffer.startIndex..<headerEnd.lowerBound)
+    guard let headerText = String(data: headerData, encoding: .utf8) else { return nil }
+    let lines = headerText.split(separator: "\r\n", omittingEmptySubsequences: false)
+    guard let requestLine = lines.first?.split(separator: " "), requestLine.count >= 2
+    else { return nil }
+    var headers: [String: String] = [:]
+    for line in lines.dropFirst() where !line.isEmpty {
+      guard let colon = line.firstIndex(of: ":") else { continue }
+      headers[String(line[..<colon])] =
+        line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+    }
+    let bodyStart = headerEnd.upperBound
+    let encoded = headers.first {
+      $0.key.caseInsensitiveCompare("Transfer-Encoding") == .orderedSame
+    }?.value.lowercased()
+    let body: Data
+    if encoded == "chunked" {
+      guard let decoded = decodeChunks(buffer[bodyStart...]) else { return nil }
+      body = decoded
+    } else {
+      let length = headers.first { $0.key.caseInsensitiveCompare("Content-Length") == .orderedSame }
+        .flatMap { Int($0.value) } ?? 0
+      guard buffer.distance(from: bodyStart, to: buffer.endIndex) >= length else { return nil }
+      let bodyEnd = buffer.index(bodyStart, offsetBy: length)
+      body = buffer.subdata(in: bodyStart..<bodyEnd)
+    }
+    return Received(
+      method: String(requestLine[0]),
+      path: String(requestLine[1]),
+      headers: headers,
+      body: body
+    )
+  }
+
+  private func decodeChunks(_ data: Data) -> Data? {
+    var body = Data()
+    var cursor = data.startIndex
+    while cursor < data.endIndex {
+      guard let lineEnd = data[cursor...].range(of: Data("\r\n".utf8)) else { return nil }
+      guard let sizeText = String(data: data[cursor..<lineEnd.lowerBound], encoding: .utf8),
+        let size = Int(sizeText, radix: 16)
+      else { return nil }
+      let chunkStart = lineEnd.upperBound
+      let chunkEnd = data.index(chunkStart, offsetBy: size, limitedBy: data.endIndex)
+      guard let chunkEnd, data.distance(from: chunkEnd, to: data.endIndex) >= 2 else { return nil }
+      body.append(data[chunkStart..<chunkEnd])
+      cursor = data.index(chunkEnd, offsetBy: 2)
+      if size == 0 { return body }
+    }
+    return nil
   }
 }
 
