@@ -1025,6 +1025,11 @@ struct DecodingContractTests {
     #expect(recorder.request?.url == url)
     #expect(recorder.request?.httpMethod == "POST")
     #expect(recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    if #available(macOS 12, iOS 15, tvOS 15, watchOS 8, *) {
+      #expect(recorder.request?.httpBodyStream != nil)
+    } else {
+      #expect(recorder.request?.httpBody == Data(#"{"value":"sent"}"#.utf8))
+    }
   }
 
   @Test("Encodable builder preserves explicit Content-Type on the URLRequest")
