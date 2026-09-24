@@ -794,22 +794,44 @@ private func makeRecordingJSONSession(
   return (session, recorder)
 }
 
-/// Captures auto-headers onto a `URLRequest` without sending a streamed upload through
-/// `MockURLProtocol`. `URLSessionTransport` uses `uploadTask(withStreamedRequest:)` for
-/// bodies, which does not complete against a data-only `URLProtocol`.
-private struct URLRequestCapturingMiddleware: ClientMiddleware {
-  let url: URL
-  let recorder: RequestRecorder
+private struct CapturedRequestHeaders: Sendable {
+  let accept: String?
+  let contentType: String?
+}
+
+private final class RequestHeaderRecorder: @unchecked Sendable {
+  private let lock = NSLock()
+  private var _headers: CapturedRequestHeaders?
+
+  var headers: CapturedRequestHeaders? {
+    lock.lock()
+    defer { lock.unlock() }
+    return _headers
+  }
+
+  func record(_ request: HTTPRequest) {
+    lock.lock()
+    _headers = CapturedRequestHeaders(
+      accept: request.headerFields[.accept],
+      contentType: request.headerFields[.contentType]
+    )
+    lock.unlock()
+  }
+}
+
+/// Captures the middleware-level HTTPRequest and short-circuits before URLSessionTransport.
+/// These tests cover header defaults and overrides before transport conversion; they do not claim
+/// to verify the URLRequest produced by URLSessionTransport for streamed uploads.
+private struct RequestHeaderCapturingMiddleware: ClientMiddleware {
+  let recorder: RequestHeaderRecorder
   let status: HTTPResponse.Status
   let responseBody: Data?
 
   init(
-    url: URL,
-    recorder: RequestRecorder,
+    recorder: RequestHeaderRecorder,
     status: HTTPResponse.Status = .ok,
     responseBody: Data? = Data(#"{"value":"ok"}"#.utf8)
   ) {
-    self.url = url
     self.recorder = recorder
     self.status = status
     self.responseBody = responseBody
@@ -822,12 +844,7 @@ private struct URLRequestCapturingMiddleware: ClientMiddleware {
     operationID: String,
     next: @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
   ) async throws -> (HTTPResponse, HTTPBody?) {
-    var urlRequest = URLRequest(url: url)
-    urlRequest.httpMethod = request.method.rawValue
-    for field in request.headerFields {
-      urlRequest.setValue(field.value, forHTTPHeaderField: field.name.rawName)
-    }
-    recorder.record(urlRequest)
+    recorder.record(request)
     let response = HTTPResponse(status: status)
     if let responseBody {
       return (response, HTTPBody(responseBody))
@@ -1017,61 +1034,56 @@ struct DecodingContractTests {
     #expect(recorder.request?.value(forHTTPHeaderField: "Accept") != "application/json")
   }
 
-  @Test("Encodable request auto-sets JSON Content-Type on URLRequest")
+  @Test("Encodable request auto-sets JSON Content-Type on the middleware request")
   func encodableRequestContentType() async throws {
-    let recorder = RequestRecorder()
+    let recorder = RequestHeaderRecorder()
     let client = OpenAPIDynamic(
-      middleware: [URLRequestCapturingMiddleware(url: url, recorder: recorder)]
+      middleware: [RequestHeaderCapturingMiddleware(recorder: recorder)]
     )
     _ = try await client.sendRequest(method: .post, url: url, body: UnitModel(value: "sent"))
-    #expect(
-      recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    #expect(recorder.headers?.contentType == "application/json")
   }
 
   @Test("Encodable request preserves explicit Content-Type override")
   func encodableRequestContentTypeOverride() async throws {
-    let recorder = RequestRecorder()
+    let recorder = RequestHeaderRecorder()
     var headers: HTTPFields = [:]
     headers[.contentType] = "application/merge-patch+json"
     let client = OpenAPIDynamic(
-      middleware: [URLRequestCapturingMiddleware(url: url, recorder: recorder)]
+      middleware: [RequestHeaderCapturingMiddleware(recorder: recorder)]
     )
     _ = try await client.sendRequest(
       method: .post, url: url, headers: headers, body: UnitModel(value: "sent"))
-    #expect(
-      recorder.request?.value(forHTTPHeaderField: "Content-Type")
-        == "application/merge-patch+json")
+    #expect(recorder.headers?.contentType == "application/merge-patch+json")
   }
 
-  @Test("Encodable response-body request auto-sets JSON Content-Type on URLRequest")
+  @Test("Encodable response-body request auto-sets JSON Content-Type on middleware request")
   func encodableResponseBodyContentType() async throws {
-    let recorder = RequestRecorder()
+    let recorder = RequestHeaderRecorder()
     let client = OpenAPIDynamic(
-      middleware: [URLRequestCapturingMiddleware(url: url, recorder: recorder)]
+      middleware: [RequestHeaderCapturingMiddleware(recorder: recorder)]
     )
     _ = try await client.sendRequestWithResponseBody(
       method: .post, url: url, body: UnitModel(value: "sent"))
-    #expect(
-      recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    #expect(recorder.headers?.contentType == "application/json")
   }
 
-  @Test("Encodable validated request auto-sets JSON Content-Type on URLRequest")
+  @Test("Encodable validated request auto-sets JSON Content-Type on middleware request")
   func encodableValidatedContentType() async throws {
-    let recorder = RequestRecorder()
+    let recorder = RequestHeaderRecorder()
     let client = OpenAPIDynamic(
-      middleware: [URLRequestCapturingMiddleware(url: url, recorder: recorder)]
+      middleware: [RequestHeaderCapturingMiddleware(recorder: recorder)]
     )
     _ = try await client.sendRequestAndValidate(
       method: .post, url: url, body: UnitModel(value: "sent"))
-    #expect(
-      recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    #expect(recorder.headers?.contentType == "application/json")
   }
 
-  @Test("Encodable builder request auto-sets JSON Content-Type on URLRequest")
+  @Test("Encodable builder request auto-sets JSON Content-Type on middleware request")
   func encodableBuilderRequestContentType() async throws {
-    let recorder = RequestRecorder()
+    let recorder = RequestHeaderRecorder()
     let client = OpenAPIDynamic(
-      middleware: [URLRequestCapturingMiddleware(url: url, recorder: recorder)]
+      middleware: [RequestHeaderCapturingMiddleware(recorder: recorder)]
     )
     let (response, _) = try await client.sendRequestWithResponseBody { builder in
       builder.setMethod(.post)
@@ -1079,8 +1091,7 @@ struct DecodingContractTests {
       try builder.setBody(UnitModel(value: "sent"))
     }
     #expect(response.status == .ok)
-    #expect(
-      recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    #expect(recorder.headers?.contentType == "application/json")
   }
 
   @Test("Decoded response body distinguishes absent from zero-byte body")
