@@ -1032,6 +1032,35 @@ struct DecodingContractTests {
     }
   }
 
+  @Test("Middleware Content-Type mutation reaches the URLSession request")
+  func middlewareContentTypeReachesURLRequest() async throws {
+    let recorder = RequestRecorder()
+    let session = makeMockSessionWithHandler(for: url) { request in
+      recorder.record(request)
+      return (
+        HTTPURLResponse(
+          url: try #require(request.url),
+          statusCode: 200,
+          httpVersion: nil,
+          headerFields: nil
+        )!,
+        Data()
+      )
+    }
+    let client = OpenAPIDynamic(
+      session: session,
+      middleware: [
+        HeaderInjectingMiddleware(headerName: .contentType, value: "application/json; charset=utf-8")
+      ]
+    )
+
+    _ = try await client.sendRequest(method: .post, url: url, body: Data("raw".utf8))
+
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Content-Type")
+        == "application/json; charset=utf-8")
+  }
+
   @Test("Encodable builder preserves explicit Content-Type on the URLRequest")
   func encodableBuilderContentTypeOverride() async throws {
     let (session, recorder) = makeRecordingJSONSession(for: url)
