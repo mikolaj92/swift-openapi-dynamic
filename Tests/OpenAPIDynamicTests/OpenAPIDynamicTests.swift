@@ -220,6 +220,22 @@ private final class MockURLProtocol: URLProtocol {
   }
 
   override func stopLoading() {}
+
+  /// URLSessionTransport sends bodies with uploadTask(withStreamedRequest:).
+  /// That task reaches URLProtocol without copying headers onto a rebuilt request,
+  /// and waits for this callback before the upload can finish. Returning the stream
+  /// keeps startLoading's URLRequest — the one the transport built — observable.
+  func urlSession(
+    _ session: URLSession,
+    task: URLSessionTask,
+    needNewBodyStream completionHandler: @escaping (InputStream?) -> Void
+  ) {
+    if let body = request.httpBody {
+      completionHandler(InputStream(data: body))
+      return
+    }
+    completionHandler(InputStream(data: Data()))
+  }
 }
 
 // Integration test with a mock server would require additional setup
@@ -1029,6 +1045,40 @@ struct DecodingContractTests {
       #expect(recorder.request?.httpBodyStream != nil)
     } else {
       #expect(recorder.request?.httpBody == Data(#"{"value":"sent"}"#.utf8))
+    }
+  }
+
+  @Test("Streamed upload Content-Type is the URLRequest URLSessionTransport built")
+  func streamedUploadContentTypeIsTransportURLRequest() async throws {
+    let recorder = RequestRecorder()
+    let session = makeMockSessionWithHandler(for: url) { request in
+      recorder.record(request)
+      return (
+        HTTPURLResponse(
+          url: try #require(request.url),
+          statusCode: 200,
+          httpVersion: nil,
+          headerFields: nil
+        )!,
+        Data()
+      )
+    }
+
+    let (response, _) = try await OpenAPIDynamic(session: session).sendRequestWithResponseBody {
+      builder in
+      builder.setMethod(.post)
+      builder.setURL(url)
+      try builder.setBody(UnitModel(value: "sent"))
+    }
+
+    let captured = try #require(recorder.request)
+    #expect(response.status == .ok)
+    #expect(captured.url == url)
+    #expect(captured.httpMethod == "POST")
+    #expect(captured.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    if #available(macOS 12, iOS 15, tvOS 15, watchOS 8, *) {
+      #expect(captured.httpBody == nil)
+      #expect(captured.httpBodyStream != nil)
     }
   }
 
