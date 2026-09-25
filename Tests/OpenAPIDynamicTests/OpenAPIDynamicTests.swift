@@ -1058,20 +1058,23 @@ struct DecodingContractTests {
     #expect(recorder.body == Data(#"{"value":"sent"}"#.utf8))
   }
 
-  @Test("Streamed upload bytes and Content-Type are the URLRequest URLSession sends")
-  func streamedUploadContentTypeIsTransportURLRequest() async throws {
+  @Test("Streamed upload preserves Content-Type override on the URLRequest URLSession sends")
+  func streamedUploadContentTypeOverrideIsTransportURLRequest() async throws {
     let (session, recorder) = makeRecordingJSONSession(for: url)
     let (response, _) = try await OpenAPIDynamic(session: session).sendRequestWithResponseBody {
       builder in
       builder.setMethod(.post)
       builder.setURL(url)
+      builder.addHeader(.contentType, "application/merge-patch+json")
       try builder.setBody(UnitModel(value: "sent"))
     }
 
     #expect(response.status == .ok)
     #expect(recorder.request?.url == url)
     #expect(recorder.request?.httpMethod == "POST")
-    #expect(recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Content-Type")
+        == "application/merge-patch+json")
     #expect(recorder.body == Data(#"{"value":"sent"}"#.utf8))
   }
 
