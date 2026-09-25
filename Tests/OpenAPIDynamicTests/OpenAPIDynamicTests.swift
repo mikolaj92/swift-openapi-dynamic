@@ -1037,6 +1037,23 @@ struct DecodingContractTests {
     #expect(recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
   }
 
+  @Test("Encodable response-body request preserves Content-Type override on the URLRequest")
+  func encodableResponseBodyContentTypeOverride() async throws {
+    let (session, recorder) = makeRecordingJSONSession(for: url)
+    var headers: HTTPFields = [:]
+    headers[.contentType] = "application/merge-patch+json"
+
+    _ = try await OpenAPIDynamic(session: session).sendRequestWithResponseBody(
+      method: .post, url: url, headers: headers, body: UnitModel(value: "sent"))
+
+    #expect(recorder.request?.url == url)
+    #expect(recorder.request?.httpMethod == "POST")
+    #expect(
+      recorder.request?.value(forHTTPHeaderField: "Content-Type")
+        == "application/merge-patch+json")
+    #expect(recorder.body == Data(#"{"value":"sent"}"#.utf8))
+  }
+
   @Test("Encodable validated request auto-sets JSON Content-Type on the URLRequest")
   func encodableValidatedContentType() async throws {
     let (session, recorder) = makeRecordingJSONSession(for: url)
