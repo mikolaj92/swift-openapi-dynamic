@@ -803,7 +803,9 @@ private func expectSameError(
   )
 }
 
-/// Captures the exact URLRequest delivered to MockURLProtocol, after URLSessionTransport builds it.
+/// Captures the URLRequest as it enters MockURLProtocol, after URLSessionTransport builds it.
+/// This records both buffered requests and URLSession's streamed-upload requests without
+/// reconstructing one from the middleware-level HTTPRequest.
 private func makeRecordingJSONSession(
   for url: URL,
   statusCode: Int = 200,
@@ -1078,7 +1080,7 @@ struct DecodingContractTests {
     #expect(recorder.body == Data(#"{"value":"sent"}"#.utf8))
   }
 
-  @Test("Streamed upload preserves Content-Type override on the URLRequest URLSession sends")
+  @Test("Streamed upload preserves Content-Type override through URLSessionTransport")
   func streamedUploadContentTypeOverrideIsTransportURLRequest() async throws {
     let (session, recorder) = makeRecordingJSONSession(for: url)
     let (response, _) = try await OpenAPIDynamic(session: session).sendRequestWithResponseBody {
