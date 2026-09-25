@@ -1011,7 +1011,10 @@ struct DecodingContractTests {
     let (session, recorder) = makeRecordingJSONSession(for: url)
     _ = try await OpenAPIDynamic(session: session).sendRequest(
       method: .post, url: url, body: UnitModel(value: "sent"))
+    #expect(recorder.request?.url == url)
+    #expect(recorder.request?.httpMethod == "POST")
     #expect(recorder.request?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    #expect(recorder.body == Data(#"{"value":"sent"}"#.utf8))
   }
 
   @Test("Encodable request preserves explicit Content-Type on the URLRequest")
