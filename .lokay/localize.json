@@ -1,53 +1,44 @@
 {
   "paths": [
-    "README.md",
-    "Sources/OpenAPIDynamic",
-    "Sources/OpenAPIDynamic/OpenAPIDynamic.swift",
-    "Tests/OpenAPIDynamicIntegrationTests",
+    "Tests/OpenAPIDynamicTests/OpenAPIDynamicTests.swift",
+    "Sources/OpenAPIDynamic/Decoding.swift",
+    "Tests/OpenAPIDynamicTests",
+    "Sources/OpenAPIDynamic/DecodingFailure.swift",
     "Tests/OpenAPIDynamicIntegrationTests/Models.swift",
     "Tests/OpenAPIDynamicIntegrationTests/OpenAPIDynamicIntegrationTests.swift",
-    "Tests/OpenAPIDynamicTests",
-    "Tests/OpenAPIDynamicTests/OpenAPIDynamicTests.swift",
-    "Sources",
-    "example-project/Sources",
-    "example-project/Sources/example-project",
-    "example-project/Sources/example-project/example_project.swift",
+    "Sources/OpenAPIDynamic",
+    "Sources/OpenAPIDynamic/Client.swift",
+    "Sources/OpenAPIDynamic/Errors.swift",
+    "Sources/OpenAPIDynamic/MiddlewareTransport.swift",
+    "Sources/OpenAPIDynamic/RequestBuilder.swift",
     "AUDIT.md",
-    "CHANGELOG.md",
-    "CONTRIBUTING.md",
-    "release.yml",
-    "github.com/mikolaj92/swift-openapi-dynamic/actions/workflows/daily_test.yml/badge.svg"
+    "Tests/OpenAPIDynamicIntegrationTests",
+    "python/tests/test_readme_ci_badge.py"
   ],
   "source": "deterministic",
   "seed_paths": [
-    "release.yml",
-    "github.com/mikolaj92/swift-openapi-dynamic/actions/workflows/daily_test.yml/badge.svg"
+    "Tests/OpenAPIDynamicTests/OpenAPIDynamicTests.swift",
+    "OpenAPIDynamicTests/OpenAPIDynamicTests.swift"
   ],
   "matched_tokens": [
-    "Badge",
     "README",
-    "workflow",
-    "daily_test",
-    "yml",
-    "mikolaj92",
+    "decoding",
+    "OpenAPIDynamicTests",
+    "Decoding",
+    "source",
     "openapi",
     "dynamic",
-    "actions",
-    "workflows",
-    "badge",
-    "svg",
-    "Actions",
-    "release",
-    "SVG",
-    "source",
-    "swift-openapi-dynamic"
+    "Coding",
+    "coding"
   ],
   "notes": [
-    "Agentless-style localization: deterministic paths only (no embeddings).",
+    "Deterministic fallback paths only (no embeddings).",
     "Empty path list fails closed — run_agent must not start.",
-    "Repo tree entries considered: 24."
+    "Repo tree entries considered: 33."
   ],
-  "worktree": "/Users/mini-m4-main/.lokay/worktrees/mikolaj92__swift-openapi-dynamic/ai__fix__5-badge-ci-w-readme-wskazuje-na-skasowany-e4400580",
+  "worktree": "/Users/mini-m4-0/.lokay/worktrees/mikolaj92__swift-openapi-dynamic/ai__fix__23-test-audit-publiczne-dekodowanie-json-n-67053a21",
   "wrote": false,
-  "localize_rel": ".lokay/localize.json"
+  "localize_rel": ".lokay/localize.json",
+  "semantic": null,
+  "issue": 23
 }
