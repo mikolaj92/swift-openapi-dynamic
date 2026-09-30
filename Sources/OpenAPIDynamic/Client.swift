@@ -171,7 +171,8 @@ public final class OpenAPIDynamic: Sendable {
     if headers[.contentType] == nil {
       headers[.contentType] = "application/json"
     }
-    return try await sendRequest(method: method, url: url, headers: headers, body: data)
+    // Data is Encodable; force the raw-body overload so encoding cannot recurse.
+    return try await sendRequest(method: method, url: url, headers: headers, body: data as Data?)
   }
 
   public func sendRequestStreaming(
@@ -235,8 +236,9 @@ public final class OpenAPIDynamic: Sendable {
     if headers[.contentType] == nil {
       headers[.contentType] = "application/json"
     }
+    // Data is Encodable; force the raw-body overload so encoding cannot recurse.
     return try await sendRequestWithResponseBody(
-      method: method, url: url, headers: headers, body: data)
+      method: method, url: url, headers: headers, body: data as Data?)
   }
 
   /// Performs an HTTP request and validates that the response status is successful (2xx).
@@ -280,7 +282,8 @@ public final class OpenAPIDynamic: Sendable {
     if headers[.contentType] == nil {
       headers[.contentType] = "application/json"
     }
-    return try await sendRequestAndValidate(method: method, url: url, headers: headers, body: data)
+    // Data is Encodable; force the raw-body overload so encoding cannot recurse.
+    return try await sendRequestAndValidate(method: method, url: url, headers: headers, body: data as Data?)
   }
 
   /// Performs an HTTP request with a builder and validates that the response status is successful (2xx).
