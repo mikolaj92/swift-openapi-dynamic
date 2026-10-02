@@ -272,6 +272,8 @@ let client = OpenAPIDynamic(
 
 `ClientMiddleware` is the middleware protocol used by generated clients. Keep one array of middleware instances and pass that array to both a generated client and `OpenAPIDynamic`; the dynamic client executes the same instances around its underlying `URLSession` transport.
 
+`OpenAPIDynamic` is `Sendable`. Because its configuration is immutable, you can store one instance in an actor or pass it across isolation domains in Swift 6. Reuse the same middleware instances only when they are safe for concurrent calls; otherwise create a client per isolation domain.
+
 ```swift
 let middleware: [any ClientMiddleware] = [AuthMiddleware(), LoggingMiddleware()]
 let dynamicClient = OpenAPIDynamic(middleware: middleware)

@@ -6,6 +6,10 @@ import OpenAPIURLSession
 /// A dynamic HTTP client that can make arbitrary HTTP requests with middleware support.
 /// This client is designed to work alongside static OpenAPI-generated clients,
 /// sharing the same middleware chain for consistency.
+///
+/// `OpenAPIDynamic` is `Sendable`. Stored properties are immutable, so one instance can be
+/// held by an actor or passed across isolation domains. Reuse the same middleware instances
+/// only when they are safe for concurrent calls.
 public final class OpenAPIDynamic: Sendable {
 
   /// The URLSession configuration used for requests.
