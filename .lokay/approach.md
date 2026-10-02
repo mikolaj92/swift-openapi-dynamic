@@ -1,23 +1,24 @@
 # Approach plan
 
-<!-- lokay-approach source=deterministic repo=mikolaj92/swift-openapi-dynamic issue=22 -->
+<!-- lokay-approach source=deterministic repo=mikolaj92/swift-openapi-dynamic issue=23 -->
 
 Repository: `mikolaj92/swift-openapi-dynamic`  
-Issue: #22 — [code-audit] OpenAPIDynamic nie jest Sendable, docs o izolacji milcz\u0105
+Issue: #23 — [test-audit] Publiczne dekodowanie JSON nie ma unit test\u00f3w bez sieci
 
 ## Goal
 
-`public final class OpenAPIDynamic` nie jest `Sendable`. README, DocC i komentarz typu milczą o izolacji. Biblioteka ma żyć obok generated clientów w Swift 6.
+README i AUDIT.md sprzedają Codable, status decoding, type-map i auto-headery jako kontrakt. Deterministyczne testy w `Tests/OpenAPIDynamicTests` tego nie pokrywają. Jedyny dowód to live suite gated `OPENAPI_DYNAMIC_ENABLE_LIVE_TESTS=1`.
 
 ## Files likely touched
 
-- (infer from repo inspection)
+- `Tests/OpenAPIDynamicTests/OpenAPIDynamicTests.swift`
 
 ## Test plan
 
-- Klasa jest `Sendable` (albo `@unchecked Sendable` z uzasadnieniem w komentarzu)
-- Albo README jasno mówi, że instancja nie przechodzi granic izolacji i trzeba robić nową na isolation
-- Kompilacja z `StrictConcurrency` nie ostrzega na publicznym typie
+- Unit testy `MockURLProtocol` dla każdej publicznej ścieżki dekodowania
+- Auto-header i override są asercjami na `URLRequest`, nie na echo httpbin
+- `swift test` bez env var przechodzi te przypadki
+- Live suite zostaje opcjonalnym smoke, nie jedynym pokryciem
 
 ## Non-goals
 
@@ -28,4 +29,3 @@ Issue: #22 — [code-audit] OpenAPIDynamic nie jest Sendable, docs o izolacji mi
 - Trust intentional issue; this plan is evidence for later review, not a human gate.
 - Coding agent may refine details but should stay on the stated goal and non-goals.
 - Collector boundary: if implementation introduces unbounded collection, ship only a bounded collector patch that starts durably in the background after merge. The coding agent and lokay must not populate data or wait for collection to finish.
-- No explicit file paths in issue; infer from repo inspection.

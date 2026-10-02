@@ -29,6 +29,10 @@ public struct InvalidRequestURLError: Error, LocalizedError, Equatable {
 }
 
 /// Errors that can occur during HTTP requests.
+///
+/// Synthesized `Equatable` compares the full `HTTPResponse` (status and headers)
+/// and the preserved response body. Two errors with the same status but different
+/// payloads are not equal; `errorDescription` still reports only the status line.
 public enum HTTPError: Error, LocalizedError, Equatable {
   /// The HTTP response status indicates an error.
   case statusError(HTTPResponse, body: Data?)
@@ -38,16 +42,6 @@ public enum HTTPError: Error, LocalizedError, Equatable {
     switch self {
     case .statusError(let response, _):
       return "HTTP \(response.status.code) \(response.status.reasonPhrase)"
-    }
-  }
-
-  public static func == (lhs: HTTPError, rhs: HTTPError) -> Bool {
-    switch (lhs, rhs) {
-    case (
-      .statusError(let lhsResponse, let lhsBody),
-      .statusError(let rhsResponse, let rhsBody)
-    ):
-      return lhsResponse == rhsResponse && lhsBody == rhsBody
     }
   }
 }

@@ -17,3 +17,6 @@ bypass-selection = true
 
 [tool.pytest.ini_options]
 testpaths = ["python/tests"]
+
+[tool.lokay]
+test = ["swift", "test"]

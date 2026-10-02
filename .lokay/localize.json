@@ -1,35 +1,30 @@
 {
   "paths": [
-    "Sources/OpenAPIDynamic/Client.swift",
-    "Sources/OpenAPIDynamic",
+    "Tests/OpenAPIDynamicTests/OpenAPIDynamicTests.swift",
     "Sources/OpenAPIDynamic/Decoding.swift",
+    "Tests/OpenAPIDynamicTests",
     "Sources/OpenAPIDynamic/DecodingFailure.swift",
-    "Sources/OpenAPIDynamic/MiddlewareTransport.swift",
-    "Sources/OpenAPIDynamic/Errors.swift",
-    "Sources/OpenAPIDynamic/RequestBuilder.swift",
-    "Sources",
-    "example-project/Sources",
-    "Tests/OpenAPIDynamicIntegrationTests",
     "Tests/OpenAPIDynamicIntegrationTests/Models.swift",
     "Tests/OpenAPIDynamicIntegrationTests/OpenAPIDynamicIntegrationTests.swift",
-    "example-project/Sources/example-project",
-    "example-project/Sources/example-project/example_project.swift",
-    "Tests/OpenAPIDynamicTests",
-    "Tests/OpenAPIDynamicTests/OpenAPIDynamicTests.swift",
+    "Sources/OpenAPIDynamic",
+    "Sources/OpenAPIDynamic/Client.swift",
+    "Sources/OpenAPIDynamic/Errors.swift",
+    "Sources/OpenAPIDynamic/MiddlewareTransport.swift",
+    "Sources/OpenAPIDynamic/RequestBuilder.swift",
+    "AUDIT.md",
+    "Tests/OpenAPIDynamicIntegrationTests",
     "python/tests/test_readme_ci_badge.py"
   ],
   "source": "deterministic",
   "seed_paths": [
-    "OpenAPIDynamic/OpenAPIDynamic.swift"
+    "Tests/OpenAPIDynamicTests/OpenAPIDynamicTests.swift",
+    "OpenAPIDynamicTests/OpenAPIDynamicTests.swift"
   ],
   "matched_tokens": [
-    "OpenAPIDynamic",
     "README",
-    "Sources",
-    "Integration",
-    "middleware",
-    "client",
-    "OpenAPI",
+    "decoding",
+    "OpenAPIDynamicTests",
+    "Decoding",
     "source",
     "openapi",
     "dynamic",
@@ -41,9 +36,9 @@
     "Empty path list fails closed — run_agent must not start.",
     "Repo tree entries considered: 33."
   ],
-  "worktree": "/Users/mini-m4-0/.lokay/worktrees/mikolaj92__swift-openapi-dynamic/ai__fix__22-code-audit-openapidynamic-nie-jest-send-e3a0f7c0",
+  "worktree": "/Users/mini-m4-0/.lokay/worktrees/mikolaj92__swift-openapi-dynamic/ai__fix__23-test-audit-publiczne-dekodowanie-json-n-67053a21",
   "wrote": false,
   "localize_rel": ".lokay/localize.json",
   "semantic": null,
-  "issue": 22
+  "issue": 23
 }
