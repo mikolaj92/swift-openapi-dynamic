@@ -38,14 +38,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made live-network integration tests explicit opt-in so routine test runs remain deterministic.
 
 ### Changed
+- Renamed `DecodingFailureObserver` to `DecodingFailureHandler` and the initializer parameter `decodingFailureObserver` to `decodingFailureHandler`.
 - Raised the minimum `swift-openapi-runtime` version to 1.8.2 and `swift-openapi-urlsession` version to 1.2.0.
 
 ## [1.1.0] - 2026-05-31
 
 ### Added
-- Added `DecodingFailureContext` and the decoding-failure callback, now named `DecodingFailureHandler`.
-- Added client-level decoding-failure support, now exposed as `decodingFailureHandler`.
-- Handler context includes method, URL, operation ID, response, response body, target type, and thrown error.
+- Added `DecodingFailureContext` and `DecodingFailureObserver` (historical name; renamed to `DecodingFailureHandler` in 1.2.0).
+- Added client-level `decodingFailureObserver` support for response decoding failures (historical name; renamed to `decodingFailureHandler` in 1.2.0).
+- Observer context includes method, URL, operation ID, response, response body, target type, and thrown error.
 
 ## [1.0.0] - 2025-11-10
 
