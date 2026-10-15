@@ -19,4 +19,4 @@ bypass-selection = true
 testpaths = ["python/tests"]
 
 [tool.lokay]
-test = ["swift", "test"]
+test = ["swift", "test", "--cache-path", ".build/cache", "--config-path", ".build/config", "--security-path", ".build/security"]
