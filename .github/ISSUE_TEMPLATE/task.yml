@@ -8,8 +8,6 @@ body:
     attributes:
       value: >
         This repository hosts issues for the OpenAPIDynamic library.
-        For Xcode or Apple platform-tooling problems, use
-        [Feedback Assistant](https://developer.apple.com/bug-reporting).
 
         ___
   - type: textarea
