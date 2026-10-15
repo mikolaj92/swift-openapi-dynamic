@@ -19,4 +19,4 @@ bypass-selection = true
 testpaths = ["python/tests"]
 
 [tool.lokay]
-test = ["sh", "-c", "uv sync --frozen --all-extras && uv run --frozen pytest && swift test"]
+test = ["swift", "test"]
