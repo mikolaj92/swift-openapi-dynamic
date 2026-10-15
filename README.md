@@ -175,10 +175,10 @@ let user: User = try await client.sendRequest(method: .get, url: userURL)
 // Decode with success validation (automatically sets Accept: application/json)
 let user: User = try await client.sendRequestAndValidate(method: .get, url: userURL)
 
-// Get both response and optional decoded body (automatically sets Accept: application/json).
-// `user` is `nil` only when the collected body is absent; empty `Data()` is decoded.
 let (response, user): (HTTPResponse, User?) = try await client.sendRequestWithResponseBody(method: .get, url: userURL)
 ```
+
+`user` is `nil` when the response body is absent. A present body, including an empty body, is passed to the decoder; decoding errors are thrown.
 
 ### Status-Specific Decoding
 
