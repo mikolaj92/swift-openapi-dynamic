@@ -13,7 +13,7 @@ When using swift-openapi-generator, most of your API calls are handled by static
 
 - **Dynamic HTTP requests**: Make requests with runtime-determined URLs and methods
 - **Middleware compatibility**: Share middleware with static swift-openapi-generator clients
-- **Flexible request building**: Use a fluent API to construct requests
+- **Flexible request building**: Configure an `inout RequestBuilder` with separate method calls
 - **Codable decoding**: Automatic JSON decoding with type safety
 - **Decoding observability**: Inspect response decoding failures from one client-level hook
 - **Status-specific decoding**: Handle different response models based on HTTP status codes
@@ -115,7 +115,7 @@ let response = try await client.sendRequest(
 
 ### Using the Request Builder
 
-For more complex requests, use the fluent request builder. `RequestBuilder` has no default destination: `url` starts as `nil`. String URLs and query composition are throwing operations, and a missing destination throws `MissingRequestURLError` before middleware or transport runs.
+For more complex requests, configure the closure's `inout RequestBuilder` parameter with separate method calls. `RequestBuilder` has no default destination: `url` starts as `nil`. String URLs and query composition are throwing operations, and a missing destination throws `MissingRequestURLError` before middleware or transport runs.
 
 ```swift
 let (response, bodyData) = try await client.sendRequestWithResponseBody { builder in
