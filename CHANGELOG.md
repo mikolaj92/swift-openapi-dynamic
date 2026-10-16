@@ -64,9 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 - `OpenAPIDynamic` class for dynamic HTTP requests
 - `RequestBuilder` for fluent request construction
-- Decoding methods: `request<T>()`, `requestSuccessful<T>()`, `requestWithBody<T>()`
-- Status decoding: `requestWithStatusDecoding()`, `requestWithTypeDecoding()`
-- Flexible decoding: `requestDecoded()`
+- Decoding methods: `sendRequest<T>()`, `sendRequestAndValidate<T>()`, `sendRequestWithResponseBody<T>()`
+- Status decoding: `sendRequestWithStatusDecoding()`, `sendRequestWithTypeDecoding()`
+- Flexible decoding: `sendRequestWithFlexibleDecoding()`
 - Error types: `HTTPError`, `DecodingError`, `UnexpectedStatusError`
 - Helper: `decode()` function for safe decoding
 
