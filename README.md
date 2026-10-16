@@ -182,31 +182,27 @@ let (response, user): (HTTPResponse, User?) = try await client.sendRequestWithRe
 
 ### Status-Specific Decoding
 
-Handle different response models based on HTTP status codes:
+Handle different response models based on HTTP status codes.
+
+Type map:
 
 ```swift
-// Using type map
 let result = try await client.sendRequestWithTypeDecoding(
     method: .post,
     url: createUserURL,
     typeMap: [200: User.self, 201: CreatedUser.self, 400: ValidationError.self]
 )
-
-// Using status decoders
-let user: User = try await client.sendRequestWithStatusDecoding(
-    method: .get,
-    url: userURL,
-    decoders: [.ok: { try decode(User.self, from: $0) }]
-)
-
 switch result {
 case let user as User: print("User: \(user)")
 case let created as CreatedUser: print("Created: \(created)")
 case let error as ValidationError: throw error
-default: throw UnexpectedStatusError.unexpectedStatus(response.status)
+default: print("Unexpected decoded type")
 }
+```
 
-// Using status decoders
+Status decoders:
+
+```swift
 let user: User = try await client.sendRequestWithStatusDecoding(
     method: .get,
     url: userURL,
