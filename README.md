@@ -182,7 +182,7 @@ let (response, user): (HTTPResponse, User?) = try await client.sendRequestWithRe
 
 ### Status-Specific Decoding
 
-Handle different response models based on HTTP status codes.
+Handle different response models based on HTTP status codes. All mapped models must conform to `Decodable`; `ValidationError` must also conform to `Error`.
 
 Type map:
 
