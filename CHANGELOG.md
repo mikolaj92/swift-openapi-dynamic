@@ -55,7 +55,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dynamic HTTP client with middleware support
 - Integration with swift-openapi-generator
 - Fluent request builder API
-- Comprehensive Codable decoding extensions
 - Status-specific response decoding
 - Structured error handling with body preservation
 - Helper functions for safe JSON decoding
