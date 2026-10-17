@@ -60,6 +60,10 @@ public struct RequestBuilder {
     return self
   }
 
+  /// Replaces the query string, discarding existing query parameters.
+  /// - Parameter parameters: The query parameters.
+  /// - Throws: `MissingRequestURLError` when no destination URL has been set.
+  /// - Throws: `InvalidRequestURLError` when the current URL cannot be composed safely.
   @discardableResult
   public mutating func setQuery(_ parameters: [String: String]) throws -> Self {
     let url = try requireURL()
