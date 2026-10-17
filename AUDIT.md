@@ -30,12 +30,11 @@ Claim (README):
 
 Usage model shown:
 ```swift
-let middleware = [AuthMiddleware(), LoggingMiddleware()]
-let staticClient = Client(serverURL: baseURL, transport: URLSessionTransport(), middlewares: middleware)
+let middleware: [any ClientMiddleware] = [AuthMiddleware(), LoggingMiddleware()]
 let dynamicClient = OpenAPIDynamic(middleware: middleware)
 ```
 
-This is the exact use case the library targets: one set of middleware instances used for both generated static calls and dynamic ad-hoc calls.
+Pass the same middleware array to the generated client using its actual initializer.
 
 ---
 
