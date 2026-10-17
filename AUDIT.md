@@ -34,7 +34,7 @@ let middleware: [any ClientMiddleware] = [AuthMiddleware(), LoggingMiddleware()]
 let dynamicClient = OpenAPIDynamic(middleware: middleware)
 ```
 
-Pass the same middleware array to the generated client using its actual initializer.
+Also pass this shared middleware array to the generated client using its actual initializer.
 
 ---
 
