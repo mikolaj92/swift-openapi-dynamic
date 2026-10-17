@@ -129,6 +129,8 @@ let (response, bodyData) = try await client.sendRequestWithResponseBody { builde
 }
 ```
 
+setQuery replaces the entire query string, discarding existing query parameters.
+
 ### Validating Responses
 
 ```swift

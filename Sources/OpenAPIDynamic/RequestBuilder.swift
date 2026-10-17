@@ -60,7 +60,6 @@ public struct RequestBuilder {
     return self
   }
 
-  /// Adds query parameters to the URL.
   /// - Parameter parameters: The query parameters.
   /// - Throws: `MissingRequestURLError` when no destination URL has been set.
   /// - Throws: `InvalidRequestURLError` when the current URL cannot be composed safely.
