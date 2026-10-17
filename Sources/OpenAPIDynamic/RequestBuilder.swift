@@ -29,7 +29,6 @@ public struct RequestBuilder {
 
   /// Sets the HTTP method.
   /// - Parameter method: The HTTP method.
-  /// - Returns: The builder for chaining.
   @discardableResult
   public mutating func setMethod(_ method: HTTPRequest.Method) -> Self {
     self.method = method
@@ -38,7 +37,6 @@ public struct RequestBuilder {
 
   /// Sets the URL.
   /// - Parameter url: The URL for the request.
-  /// - Returns: The builder for chaining.
   @discardableResult
   public mutating func setURL(_ url: URL) -> Self {
     self.url = url
@@ -47,7 +45,6 @@ public struct RequestBuilder {
 
   /// Sets the URL from an absolute HTTP or HTTPS URL string.
   /// - Parameter url: The full URL string.
-  /// - Returns: The builder for chaining.
   /// - Throws: `InvalidRequestURLStringError` when the string is not an absolute HTTP URL.
   @discardableResult
   public mutating func setURL(_ url: String) throws -> Self {
@@ -63,9 +60,7 @@ public struct RequestBuilder {
     return self
   }
 
-  /// Adds query parameters to the URL.
   /// - Parameter parameters: The query parameters.
-  /// - Returns: The builder for chaining.
   /// - Throws: `MissingRequestURLError` when no destination URL has been set.
   /// - Throws: `InvalidRequestURLError` when the current URL cannot be composed safely.
   @discardableResult
@@ -101,7 +96,6 @@ public struct RequestBuilder {
   /// - Parameters:
   ///   - name: The header name.
   ///   - value: The header value.
-  /// - Returns: The builder for chaining.
   @discardableResult
   public mutating func addHeader(_ name: HTTPField.Name, _ value: String) -> Self {
     headers[name] = value
@@ -110,7 +104,6 @@ public struct RequestBuilder {
 
   /// Adds multiple headers to the request.
   /// - Parameter headers: The headers to add.
-  /// - Returns: The builder for chaining.
   @discardableResult
   public mutating func addHeaders(_ headers: HTTPFields) -> Self {
     for field in headers {
@@ -121,7 +114,6 @@ public struct RequestBuilder {
 
   /// Sets the request body.
   /// - Parameter body: The body data.
-  /// - Returns: The builder for chaining.
   @discardableResult
   public mutating func setBody(_ body: Data?) -> Self {
     self.body = body
@@ -132,7 +124,6 @@ public struct RequestBuilder {
   /// - Parameters:
   ///   - body: The body to encode as JSON.
   ///   - encoder: The JSON encoder to use.
-  /// - Returns: The builder for chaining.
   @discardableResult
   public mutating func setBody<T: Encodable>(_ body: T, encoder: JSONEncoder = .init()) throws
     -> Self
@@ -146,7 +137,6 @@ public struct RequestBuilder {
 
   /// Sets the operation ID for middleware.
   /// - Parameter operationID: The operation ID.
-  /// - Returns: The builder for chaining.
   @discardableResult
   public mutating func setOperationID(_ operationID: String) -> Self {
     self.operationID = operationID
