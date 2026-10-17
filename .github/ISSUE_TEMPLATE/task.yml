@@ -2,7 +2,6 @@ name: Track a task
 description: >
   Tasks can be used to track internal work, extract individual subtasks from a
   larger issue, and can serve as umbrella issues themselves.
-labels: [task]
 body:
   - type: markdown
     attributes:
