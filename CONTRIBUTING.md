@@ -34,7 +34,6 @@ Thank you for your interest in contributing to OpenAPIDynamic! This document pro
 
 - Follow the [Swift API Design Guidelines](https://swift.org/documentation/api-design-guidelines/)
 - Use consistent naming conventions
-- Add documentation comments for all public APIs
 - Keep lines under 120 characters
 
 ### Testing
