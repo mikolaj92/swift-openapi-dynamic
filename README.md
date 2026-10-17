@@ -301,6 +301,8 @@ do {
             print("Error details: \(String(describing: errorModel))")
         }
     }
+} catch let error as InvalidRequestURLError {
+    print("Invalid request URL: \(error.url). Relative URLs and URLs missing a scheme or host are not supported.")
 } catch let error as DecodingError {
     if case .noData = error { print("Response had no body data") }
 } catch let error as UnexpectedStatusError {
@@ -313,6 +315,7 @@ Transport and middleware failures are wrapped in the OpenAPIRuntime `ClientError
 ### Error Types
 
 - `HTTPError.statusError`: HTTP errors with optional response body
+- `InvalidRequestURLError`: The request URL is relative or missing a scheme or host
 - `DecodingError.noData`: Missing (`nil`) response data during required decoding. A present empty body is not this error.
 - `UnexpectedStatusError.unexpectedStatus`: Unmapped HTTP status codes
 - `ClientError`: Transport or middleware failures with generated-client-compatible context
