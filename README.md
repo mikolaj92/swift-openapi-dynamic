@@ -13,7 +13,7 @@ When using swift-openapi-generator, most of your API calls are handled by static
 
 - **Dynamic HTTP requests**: Make requests with runtime-determined URLs and methods
 - **Middleware compatibility**: Share middleware with static swift-openapi-generator clients
-- **Flexible request building**: Use a fluent API to construct requests
+- **Flexible request building**: Configure the same `inout RequestBuilder` parameter with separate method calls
 - **Codable decoding**: Automatic JSON decoding with type safety
 - **Decoding observability**: Inspect response decoding failures from one client-level hook
 - **Status-specific decoding**: Handle different response models based on HTTP status codes
@@ -115,7 +115,7 @@ let response = try await client.sendRequest(
 
 ### Using the Request Builder
 
-For more complex requests, use the fluent request builder. `RequestBuilder` has no default destination: `url` starts as `nil`. String URLs and query composition are throwing operations, and a missing destination throws `MissingRequestURLError` before middleware or transport runs.
+For more complex requests, make separate method calls on the closure's `inout RequestBuilder` parameter. Each call updates that same parameter. `RequestBuilder` has no default destination: `url` starts as `nil`. String URLs and query composition are throwing operations, and a missing destination throws `MissingRequestURLError` before middleware or transport runs.
 
 ```swift
 let (response, bodyData) = try await client.sendRequestWithResponseBody { builder in
@@ -128,6 +128,8 @@ let (response, bodyData) = try await client.sendRequestWithResponseBody { builde
     builder.setOperationID("create-user")
 }
 ```
+
+setQuery replaces the entire query string, discarding existing query parameters.
 
 ### Validating Responses
 
@@ -175,10 +177,10 @@ let user: User = try await client.sendRequest(method: .get, url: userURL)
 // Decode with success validation (automatically sets Accept: application/json)
 let user: User = try await client.sendRequestAndValidate(method: .get, url: userURL)
 
-// Get both response and optional decoded body (automatically sets Accept: application/json).
-// `user` is `nil` only when the collected body is absent; empty `Data()` is decoded.
 let (response, user): (HTTPResponse, User?) = try await client.sendRequestWithResponseBody(method: .get, url: userURL)
 ```
+
+`user` is `nil` when the response body is absent. A present body, including an empty body, is passed to the decoder; decoding errors are thrown.
 
 ### Status-Specific Decoding
 
