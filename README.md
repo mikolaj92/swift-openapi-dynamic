@@ -70,7 +70,7 @@ This handler does not replace middleware. Middleware still sees transport-level 
 
 OpenAPIDynamic includes intelligent defaults to make common JSON API patterns work seamlessly:
 
-- **Automatic Accept Header**: When using methods that decode JSON responses (like `sendRequestAndValidate<T: Decodable>`), the `Accept: application/json` header is automatically set if not already specified
+- **Automatic Accept Header**: Only the `T: Decodable` overloads of `sendRequest`, `sendRequestAndValidate`, and `sendRequestWithResponseBody`, plus `sendRequestWithTypeDecoding`, add `Accept: application/json` when absent. `sendRequestWithStatusDecoding` and `sendRequestWithFlexibleDecoding` do not add `Accept`. This applies to both direct parameters and request builders.
 - **Content-Type for JSON Bodies**: When sending Encodable bodies, `Content-Type: application/json` is automatically set
 
 ```swift
