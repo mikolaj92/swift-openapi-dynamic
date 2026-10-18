@@ -179,6 +179,18 @@ public final class OpenAPIDynamic: Sendable {
     return try await sendRequest(method: method, url: url, headers: headers, body: data as Data?)
   }
 
+  /// Performs a streaming HTTP request with the configured middleware, without validating its status.
+  /// Does not collect the response into `Data` or apply `maximumResponseBodyBytes`.
+  /// - Parameters:
+  ///   - method: The HTTP method.
+  ///   - url: The URL for the request.
+  ///   - headers: Additional headers to include. Defaults to empty.
+  ///   - body: Optional request body data. Defaults to `nil`.
+  ///   - operationID: The operation ID passed to middleware and transport; `nil` uses `defaultOperationID`.
+  /// - Returns: The HTTP response and an optional `HTTPBody` stream for the caller to consume.
+  /// - Throws: `InvalidRequestURLError` if the URL cannot be decomposed into a base URL and path;
+  ///   transport or middleware failures wrapped in `ClientError`.
+  ///   Stream read errors occur later, when the caller consumes the returned body.
   public func sendRequestStreaming(
     method: HTTPRequest.Method,
     url: URL,
