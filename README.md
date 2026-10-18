@@ -70,7 +70,7 @@ This handler does not replace middleware. Middleware still sees transport-level 
 
 OpenAPIDynamic includes intelligent defaults to make common JSON API patterns work seamlessly:
 
-- **Automatic Accept Header**: When using methods that decode JSON responses (like `sendRequestAndValidate<T: Decodable>`), the `Accept: application/json` header is automatically set if not already specified
+- **Automatic Accept Header**: Only the `T: Decodable` overloads of `sendRequest`, `sendRequestAndValidate`, and `sendRequestWithResponseBody`, plus `sendRequestWithTypeDecoding`, add `Accept: application/json` when absent. `sendRequestWithStatusDecoding` and `sendRequestWithFlexibleDecoding` do not add `Accept`. This applies to both direct parameters and request builders.
 - **Content-Type for JSON Bodies**: When sending Encodable bodies, `Content-Type: application/json` is automatically set
 
 ```swift
@@ -164,8 +164,6 @@ Requests that do not provide an operation ID use `defaultOperationID`, whose def
 
 ## Codable Decoding
 
-The library provides powerful Codable decoding capabilities for type-safe JSON handling.
-
 ### Basic Decoding
 
 All decoding overloads distinguish an absent response body (`nil`) from a present zero-byte body (`Data()`). `sendRequest<T>` and `sendRequestAndValidate<T>` throw `OpenAPIDynamic.DecodingError.noData` for `nil`; a present empty body is passed to the decoder and normally produces `Swift.DecodingError`. `decodingFailureHandler` receives the same error that is rethrown to the caller. The optional `sendRequestWithResponseBody<T>` overload returns `(response, nil)` without throwing when the collected body is `nil`, and decodes a present empty `Data()`. `URLSession` maps a no-payload HTTP response to empty `Data()`, so that overload returns `nil` only when middleware or the transport returned no body.
@@ -184,21 +182,12 @@ let (response, user): (HTTPResponse, User?) = try await client.sendRequestWithRe
 
 ### Status-Specific Decoding
 
-Handle different response models based on HTTP status codes:
-
 ```swift
 // Using type map
 let result = try await client.sendRequestWithTypeDecoding(
     method: .post,
     url: createUserURL,
     typeMap: [200: User.self, 201: CreatedUser.self, 400: ValidationError.self]
-)
-
-// Using status decoders
-let user: User = try await client.sendRequestWithStatusDecoding(
-    method: .get,
-    url: userURL,
-    decoders: [.ok: { try decode(User.self, from: $0) }]
 )
 
 switch result {
@@ -217,8 +206,6 @@ let user: User = try await client.sendRequestWithStatusDecoding(
 ```
 
 ### Flexible Decoding
-
-For maximum control, use the flexible decoding closure:
 
 ```swift
 let user = try await client.sendRequestWithFlexibleDecoding(method: .get, url: userURL) { response, data in
