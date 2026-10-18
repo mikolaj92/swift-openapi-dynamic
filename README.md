@@ -268,7 +268,7 @@ let middleware: [any ClientMiddleware] = [AuthMiddleware(), LoggingMiddleware()]
 let dynamicClient = OpenAPIDynamic(middleware: middleware)
 ```
 
-When you have a generated `Client`, pass this same `middleware` array to the generated client's middleware parameter. The exact generated initializer depends on the API document and generator configuration, so this README does not invent a `Client` initializer.
+Pass the same `middleware` array to a client generated outside this package. Its initializer depends on the API document and generator configuration.
 
 The example project has no generated `Client`; its `LoggingMiddleware` and shared array demonstrate actual middleware execution with `OpenAPIDynamic`.
 
