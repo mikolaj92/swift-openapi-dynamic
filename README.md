@@ -178,8 +178,6 @@ let user: User = try await client.sendRequestAndValidate(method: .get, url: user
 let (response, user): (HTTPResponse, User?) = try await client.sendRequestWithResponseBody(method: .get, url: userURL)
 ```
 
-`user` is `nil` when the response body is absent. A present body, including an empty body, is passed to the decoder; decoding errors are thrown.
-
 ### Status-Specific Decoding
 
 ```swift
