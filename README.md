@@ -303,7 +303,7 @@ Transport and middleware failures are wrapped in the OpenAPIRuntime `ClientError
 - `DecodingError.noData`: Missing (`nil`) response data during required decoding. A present empty body is not this error.
 - `UnexpectedStatusError.unexpectedStatus`: Unmapped HTTP status codes
 - `ClientError`: Transport or middleware failures with generated-client-compatible context
-
+- `InvalidRequestURLError`: Invalid request URLs, including relative URLs and URLs missing a scheme or host
 
 ## Requirements
 
