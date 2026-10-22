@@ -155,7 +155,7 @@ Public surface is rich:
 
 **Documentation**:
 - README examples use the actual `sendRequest*` APIs and `decodingFailureHandler` label.
-- The middleware section no longer invents a generated-client initializer.
+- This package provides `OpenAPIDynamic`; the static client's API comes from separately generated code, not a `Client` defined by this package.
 - The example project defines a real `LoggingMiddleware` and passes one shared `[any ClientMiddleware]` array to `OpenAPIDynamic`; `swift build` succeeds in `example-project`.
 ---
 
