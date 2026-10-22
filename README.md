@@ -70,7 +70,7 @@ This handler does not replace middleware. Middleware still sees transport-level 
 
 OpenAPIDynamic includes intelligent defaults to make common JSON API patterns work seamlessly:
 
-- **Automatic Accept Header**: When using methods that decode JSON responses (like `sendRequestAndValidate<T: Decodable>`), the `Accept: application/json` header is automatically set if not already specified
+- **Automatic Accept Header**: Only the `T: Decodable` overloads of `sendRequest`, `sendRequestAndValidate`, and `sendRequestWithResponseBody`, plus `sendRequestWithTypeDecoding`, add `Accept: application/json` when absent. `sendRequestWithStatusDecoding` and `sendRequestWithFlexibleDecoding` do not add `Accept`. This applies to both direct parameters and request builders.
 - **Content-Type for JSON Bodies**: When sending Encodable bodies, `Content-Type: application/json` is automatically set
 
 ```swift
@@ -164,8 +164,6 @@ Requests that do not provide an operation ID use `defaultOperationID`, whose def
 
 ## Codable Decoding
 
-The library provides powerful Codable decoding capabilities for type-safe JSON handling.
-
 ### Basic Decoding
 
 All decoding overloads distinguish an absent response body (`nil`) from a present zero-byte body (`Data()`). `sendRequest<T>` and `sendRequestAndValidate<T>` throw `OpenAPIDynamic.DecodingError.noData` for `nil`; a present empty body is passed to the decoder and normally produces `Swift.DecodingError`. `decodingFailureHandler` receives the same error that is rethrown to the caller. The optional `sendRequestWithResponseBody<T>` overload returns `(response, nil)` without throwing when the collected body is `nil`, and decodes a present empty `Data()`. `URLSession` maps a no-payload HTTP response to empty `Data()`, so that overload returns `nil` only when middleware or the transport returned no body.
@@ -184,27 +182,22 @@ let (response, user): (HTTPResponse, User?) = try await client.sendRequestWithRe
 
 ### Status-Specific Decoding
 
-Handle different response models based on HTTP status codes. All mapped models must conform to `Decodable`; `ValidationError` must also conform to `Error`.
-
-Type map:
-
 ```swift
+// Using type map
 let result = try await client.sendRequestWithTypeDecoding(
     method: .post,
     url: createUserURL,
     typeMap: [200: User.self, 201: CreatedUser.self, 400: ValidationError.self]
 )
+
 switch result {
 case let user as User: print("User: \(user)")
 case let created as CreatedUser: print("Created: \(created)")
 case let error as ValidationError: throw error
-default: print("Unexpected decoded type")
+default: throw UnexpectedStatusError.unexpectedStatus(response.status)
 }
-```
 
-Status decoders:
-
-```swift
+// Using status decoders
 let user: User = try await client.sendRequestWithStatusDecoding(
     method: .get,
     url: userURL,
@@ -213,8 +206,6 @@ let user: User = try await client.sendRequestWithStatusDecoding(
 ```
 
 ### Flexible Decoding
-
-For maximum control, use the flexible decoding closure:
 
 ```swift
 let user = try await client.sendRequestWithFlexibleDecoding(method: .get, url: userURL) { response, data in
@@ -289,14 +280,14 @@ The library provides structured HTTP status errors with the collected response b
 do {
     let user: User = try await client.sendRequestAndValidate(method: .get, url: userURL)
 } catch let error as HTTPError {
-    switch error {
-    case .statusError(let response, let body):
+    if case .statusError(let response, let body) = error {
         print("HTTP error: \(response.status)")
         if let body {
-            let errorModel = try? JSONDecoder().decode(APIError.self, from: body)
-            print("Error details: \(String(describing: errorModel))")
+            print("Error details: \(String(describing: try? JSONDecoder().decode(APIError.self, from: body)))")
         }
     }
+} catch let error as InvalidRequestURLError {
+    print("Relative URL or missing scheme or host: \(error.url)")
 } catch let error as DecodingError {
     if case .noData = error { print("Response had no body data") }
 } catch let error as UnexpectedStatusError {
@@ -312,7 +303,7 @@ Transport and middleware failures are wrapped in the OpenAPIRuntime `ClientError
 - `DecodingError.noData`: Missing (`nil`) response data during required decoding. A present empty body is not this error.
 - `UnexpectedStatusError.unexpectedStatus`: Unmapped HTTP status codes
 - `ClientError`: Transport or middleware failures with generated-client-compatible context
-
+- `InvalidRequestURLError`: Invalid request URLs, including relative URLs and URLs missing a scheme or host
 
 ## Requirements
 
