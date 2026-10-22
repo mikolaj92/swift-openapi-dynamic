@@ -31,7 +31,6 @@ Claim (README):
 Usage model shown:
 ```swift
 let middleware = [AuthMiddleware(), LoggingMiddleware()]
-let staticClient = Client(serverURL: baseURL, transport: URLSessionTransport(), middlewares: middleware)
 let dynamicClient = OpenAPIDynamic(middleware: middleware)
 ```
 
