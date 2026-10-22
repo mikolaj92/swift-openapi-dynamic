@@ -194,7 +194,7 @@ switch result {
 case let user as User: print("User: \(user)")
 case let created as CreatedUser: print("Created: \(created)")
 case let error as ValidationError: throw error
-default: throw UnexpectedStatusError.unexpectedStatus(response.status)
+default: throw Swift.DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Unexpected decoded type"))
 }
 
 // Using status decoders
