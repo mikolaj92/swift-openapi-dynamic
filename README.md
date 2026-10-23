@@ -288,8 +288,8 @@ do {
     }
 } catch let error as InvalidRequestURLError {
     print("Relative URL or missing scheme or host: \(error.url)")
-} catch let error as DecodingError {
-    if case .noData = error { print("Response had no body data") }
+} catch DecodingError.noData {
+    print("Response had no body data")
 } catch let error as UnexpectedStatusError {
     print("Unexpected status: \(error.localizedDescription)")
 }
