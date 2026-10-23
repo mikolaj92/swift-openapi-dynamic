@@ -194,7 +194,7 @@ switch result {
 case let user as User: print("User: \(user)")
 case let created as CreatedUser: print("Created: \(created)")
 case let error as ValidationError: throw error
-default: throw UnexpectedStatusError.unexpectedStatus(response.status)
+default: throw Swift.DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Unexpected decoded type"))
 }
 
 // Using status decoders
@@ -268,7 +268,7 @@ let middleware: [any ClientMiddleware] = [AuthMiddleware(), LoggingMiddleware()]
 let dynamicClient = OpenAPIDynamic(middleware: middleware)
 ```
 
-Pass the same `middleware` array to a client generated outside this package. Its initializer depends on the API document and generator configuration.
+When you have a generated `Client`, pass this same `middleware` array to the generated client's middleware parameter. The exact generated initializer depends on the API document and generator configuration, so this README does not invent a `Client` initializer.
 
 The example project has no generated `Client`; its `LoggingMiddleware` and shared array demonstrate actual middleware execution with `OpenAPIDynamic`.
 
@@ -280,16 +280,16 @@ The library provides structured HTTP status errors with the collected response b
 do {
     let user: User = try await client.sendRequestAndValidate(method: .get, url: userURL)
 } catch let error as HTTPError {
-    switch error {
-    case .statusError(let response, let body):
+    if case .statusError(let response, let body) = error {
         print("HTTP error: \(response.status)")
         if let body {
-            let errorModel = try? JSONDecoder().decode(APIError.self, from: body)
-            print("Error details: \(String(describing: errorModel))")
+            print("Error details: \(String(describing: try? JSONDecoder().decode(APIError.self, from: body)))")
         }
     }
-} catch let error as DecodingError {
-    if case .noData = error { print("Response had no body data") }
+} catch let error as InvalidRequestURLError {
+    print("Relative URL or missing scheme or host: \(error.url)")
+} catch DecodingError.noData {
+    print("Response had no body data")
 } catch let error as UnexpectedStatusError {
     print("Unexpected status: \(error.localizedDescription)")
 }
@@ -303,7 +303,7 @@ Transport and middleware failures are wrapped in the OpenAPIRuntime `ClientError
 - `DecodingError.noData`: Missing (`nil`) response data during required decoding. A present empty body is not this error.
 - `UnexpectedStatusError.unexpectedStatus`: Unmapped HTTP status codes
 - `ClientError`: Transport or middleware failures with generated-client-compatible context
-
+- `InvalidRequestURLError`: Invalid request URLs, including relative URLs and URLs missing a scheme or host
 
 ## Requirements
 
