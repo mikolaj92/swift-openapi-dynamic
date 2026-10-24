@@ -12,6 +12,7 @@ import OpenAPIURLSession
 /// only when they are safe for concurrent calls.
 public final class OpenAPIDynamic: Sendable {
 
+  /// The URLSession configuration used for requests.
   public let session: URLSession
 
   /// The middleware chain to apply to all requests.
